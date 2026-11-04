@@ -61,7 +61,7 @@ vrk upgrade --config /private/server.json --component xray --to REVIEWED_VERSION
 
 参考 [发布配置](../examples/subscription-publish.json)。在 Web 主机提供标准 Nginx、openssl、systemd、runuser、curl 及可读取的有效证书。指定独立 root、domain、base_url、listen、port、certificate、key、worker user（默认 www-data）和 nginx 二进制。base_url 为 HTTPS 源站，域名和端口必须与监听一致。证书由既有流程维护，续期后须重载对应静态 Nginx 单元以加载新证书；不为发布器改动网站、443 或 ACME 80。
 
-`subscription publish` 可本机 root 执行，也可通过 `--host/--jump` 将构建和私有访问文件临时上传。只维护专用发布目录和按目录派生名称的 vrk-subscription-*.service。已有目录无所有权记录、端口占用、证书无效、文件哈希错误、空订阅或外部修改服务单元时停止。nginx -t 后原子切换发布内容，仅启动/重载静态站点，代理服务不重启。
+`subscription publish` 可本机 root 执行，也可通过 `--host/--jump` 将构建和私有访问文件临时上传。只维护专用发布目录和按目录派生名称的 vrk-subscription-*.service。已有目录无所有权记录、端口占用、证书无效、文件哈希错误、空订阅或外部修改服务单元时停止。候选配置通过 nginx -t 后切换发布内容，随后通过严格 TLS 的本机 HTTPS 检查核对文件哈希，再提交状态；代理服务不重启。
 
 访问文件首次生成随机令牌，保存在仓库外。链接路径为 `/令牌/nodes.json`、`/令牌/desktop.json`、`/令牌/v2ray.txt`。关闭目录列表、访问日志和共享缓存；原始配置与私钥不放进托管目录。令牌只控制订阅获取，不撤销已经下载的代理账号。
 
@@ -85,3 +85,17 @@ vrk subscription rollback --publish-config /private/publish.json \
 `apply/upgrade` 可选 `--verify-cases /private/cases.json --verify-output /private/new-acceptance-dir`。SSH 时从管理机运行前后检查；本机时在执行主机检查。清单至少两个明确 HTTPS 目标，部署验收建议 rounds=1、interval=0；长期观察独立使用 verify。输出保存 before/after、decision，以及发生回滚时的 restored。
 
 单站失败或部署前已有异常不直接触发回滚；至少两个此前正常目标同时退化才恢复本批。重复 apply 未改变配置时不因外部失败回滚旧批次。结果无法确定时保留现场、返回非零；SSH 结果未知时不得自动重复部署。该机制不能仅靠 HTTP 状态精确归因，仍需分段证据。
+
+## 固定公开入口与恢复
+
+公开构建使用 `--access-mode public --name builder`；发布不需要访问文件。访问模式和固定路径记录在产物清单中，不能通过改文件名绕过验收。反向代理场景在发布配置显式设置 `reverse_proxy: true`，允许 `base_url` 的公开端口与源站 `port` 不同；域名仍须匹配证书。私有 CA 使用 `ca_file` 指定信任链，禁止关闭证书校验。
+
+Cloudflare 示例：仅为订阅主机名设置代理 DNS、回源 8443、严格证书校验和缓存绕过；不修改全域其他网站的规则。源站采用发行版 Nginx、logrotate 和独立 systemd 单元，不启用默认站点。Origin CA 只用于代理回源，关闭 Cloudflare 代理后不保证普通浏览器信任该证书。
+
+重复发布当前版本保留原上一版。使用 `subscription rollback --revision <20位版本> --publish-config ...` 指定版本；不指定则恢复上一版。恢复保持当前访问令牌。发布失败恢复目录、配置及服务运行状态；pending.json 未完成事务会在下一次发布时先恢复。SSH 未知结果应先检查，不重复发布来猜测结果。
+
+`subscription status --publish-config ...` 显示版本、进程、待恢复事务及证书是否在 90 天内到期。错误日志为私有文件，通过项目在 `/etc/logrotate.d` 的独立条目按 5 MB、7 份轮转；不记录访问日志。证书更新后重新发布当前版本，完成校验、重载和 HTTPS 检查。
+
+`subscription prune --publish-config ...` 默认只预览，`--execute` 才删除；默认最近 5 版及最近 30 天保留，当前、上一版和未完成事务保护。证书、凭据和备份不删除。远端发布／回滚／检查／清理支持 `--host` 和 `--jump`。
+
+部署连接验收的自动回滚使用该次快照，并在锁内核对 generation；其他部署已修改当前版本时拒绝回滚，保留冲突证据。

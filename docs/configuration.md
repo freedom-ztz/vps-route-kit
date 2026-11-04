@@ -80,14 +80,18 @@ vrk export --host root@exit-host --format mihomo --output .private/relay.json \
 
 `vrk catalog validate/plan --catalog ...` 输出不含认证的线路与共享依赖报告。`plan --previous /private/old-report.json` 比较增删和变化。多条路径共用同一落地机时只构成入口路径冗余。
 
-每条线路可用 `acceptance.diagnosis`、`acceptance.stability` 引用相对目录的私有结果。诊断须匹配线路指纹及预期出口；稳定性须完成至少 1800 秒、两个目标各 60 次且无失败。verify 中的代理名称须与线路 id 相同。配置变化使旧指纹失效；未通过线路默认不发布。
+每条线路可用 `acceptance.diagnosis`、`acceptance.stability` 引用相对目录的私有结果。诊断须匹配线路指纹及预期出口；稳定性须完成至少 1800 秒、两个目标各 60 次且无失败。verify 中的代理名称须与线路 id 相同。仅线路及实际依赖变化使旧指纹失效；无关节点变化不要求重测。旧版未绑定证据不能用于正式发布。单条失败不会使同批其他合格线路失效。
 
 `rules` 可覆盖随包固定的 domains / cidrs 锁，每项为 HTTPS url、sha256；空内容、哈希不符或下载失败拒绝构建，不更新旧发布。默认规则来源是固定提交的 MetaCubeX/meta-rules-dat CN 域名和 IPv4 网段，更新须审查锁文件后重新构建。
 
 可选 `dns.bootstrap/domestic/remote` 分别设置节点引导、国内与外网解析。可选 `company.domains/cidrs/dns` 设置私有公司规则；公司域名只使用显式公司 DNS、返回真实地址，不配置公共回退。公司规则优先于国内分类；公共模板不含真实公司域名。
 
-双格式构建包含 Clash 节点源和完整配置、V2Ray Base64 URI 列表。V2Ray 客户端独立管理策略，不从 URI 获得 Mihomo 的 DNS 或国家回退。分享链接沿用落地认证和 SNI；不支持表达的客户端链明确排除，并在不含认证的 manifest 中说明。若全部节点均为客户端链，构建拒绝，需提供可表达的独立直达或服务端中转线路。
+双格式构建包含 Clash 节点源和完整配置、V2Ray Base64 URI 列表。V2Ray 客户端独立管理策略，不从 URI 获得 Mihomo 的 DNS 或国家回退。分享链接沿用落地认证和 SNI；不支持表达的客户端链明确排除，并在不含认证的 manifest 中说明。若全部节点均为客户端链，只能构建 Clash；选择 V2Ray 或双格式时拒绝空的 URI 集合。
 
 Mihomo 1.19.32 的 provider 内节点不能直接通过名称作为 dialer-proxy；工具使用原生全局中转策略组衔接。OpenWrt 首次合并 openwrt-example.json 中的固定组；示例中的普通策略组应复用本地既有组，不直接覆盖同名对象或重命名生产组；中转组增删需要单独审查本地策略，不能只更新订阅后假定已配置。组内缺失或所有出口失败时使用 REJECT，不使用 DIRECT/COMPATIBLE 兜底。
 
-构建时 `--mihomo` 必填，使用指定核心做原生校验。完整配置监听回环 7890 和 DNS 1053，LAN/TUN 默认关闭；端口冲突由客户端环境处理，不自动修改系统配置。
+选择 Clash 时 `--mihomo` 必填，使用指定核心做原生校验。完整配置监听回环 7890 和 DNS 1053，LAN/TUN 默认关闭；端口冲突由客户端环境处理，不自动修改系统配置。
+
+可选 `local` 对象使用 `domains` 与 `dns` 数组，显式指定本地域名及解析器，同时生成直连和真实地址规则。仅排除 Fake-IP 不会自动发现本地 DNS。公司规则仍使用 `company` 私有配置；公开模式拒绝公司配置。
+
+`--access-mode public` 无需 `--access-file`。`--name` 必须是项目标识符，不接受路径；固定路径只暴露所选格式和不含凭据的 `/version.json`。公开规则路径含内容版本，回滚不会把旧客户端指向新版规则。

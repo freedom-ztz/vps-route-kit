@@ -16,7 +16,8 @@ def require(ok, message):
 def validate(c):
     require(isinstance(c, dict) and c.get("schema_version") == 1, "invalid catalog version")
     require(
-        set(c) <= {"schema_version", "hosts", "nodes", "routes", "dns", "company", "rules"},
+        set(c)
+        <= {"schema_version", "hosts", "nodes", "routes", "dns", "company", "rules", "local"},
         "unknown catalog field",
     )
     hosts, nodes, routes = c.get("hosts"), c.get("nodes"), c.get("routes")
@@ -132,15 +133,38 @@ def validate(c):
 
 
 def fingerprint(c, r):
+    nodes = {}
+    key = r["node"]
+    while key not in nodes:
+        nodes[key] = c["nodes"][key]
+        key = nodes[key].get("dialer-proxy")
+        if not key:
+            break
     return digest(
         encode(
             {
                 "route": {k: v for k, v in r.items() if k != "acceptance"},
-                "hosts": c["hosts"],
-                "nodes": c["nodes"],
+                "hosts": {k: c["hosts"][k] for k in r["path"]},
+                "nodes": nodes,
             }
         )
     )
+
+
+def binding(c, r, targets, batch_id, core_versions):
+    require(isinstance(batch_id, str) and bool(batch_id), "evidence batch_id required")
+    require(
+        isinstance(core_versions, dict)
+        and bool(core_versions)
+        and all(isinstance(v, str) and v for v in core_versions.values()),
+        "evidence core_versions required",
+    )
+    return {
+        "fingerprint": fingerprint(c, r),
+        "batch_id": batch_id,
+        "core_versions": core_versions,
+        "targets_sha256": digest(encode(targets)),
+    }
 
 
 def accepted(c, r, base):
@@ -151,11 +175,17 @@ def accepted(c, r, base):
         s = read(Path(base) / refs["stability"])
         evidence = d["routes"][r["id"]]
         cases = [v for k, v in s["cases"].items() if k.startswith(r["id"] + "/")]
+        bound = evidence.get("binding", {})
         return (
-            evidence["fingerprint"] == fingerprint(c, r)
+            d.get("completed") is True
+            and bool(bound.get("batch_id"))
+            and bool(bound.get("core_versions"))
+            and bool(bound.get("targets_sha256"))
+            and bound == s.get("bindings", {}).get(r["id"])
+            and bound.get("fingerprint") == fingerprint(c, r)
+            and evidence["fingerprint"] == fingerprint(c, r)
             and evidence["ok"] is True
             and evidence["exit_ipv4"] == r["expected_exit_ipv4"]
-            and s.get("all_declared_passed") is True
             and s.get("completed") is True
             and s.get("elapsed_seconds", 0) >= 1800
             and len(cases) >= 2

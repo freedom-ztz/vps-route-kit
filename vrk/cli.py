@@ -59,6 +59,7 @@ def parser():
         if command == "logs":
             s.add_argument("--lines", type=int, default=100)
         if command == "rollback":
+            s.add_argument("--expected-generation")
             s.add_argument("--snapshot")
         if command == "upgrade":
             s.add_argument("--component", choices=["xray", "hysteria", "realm"], required=True)
@@ -79,13 +80,22 @@ def parser():
     cat.add_argument("--catalog", required=True)
     cat.add_argument("--previous")
     subscription = sub.add_parser("subscription")
-    subscription.add_argument("action", choices=["build", "publish", "rollback", "token"])
+    subscription.add_argument(
+        "action", choices=["build", "publish", "rollback", "token", "prune", "status"]
+    )
     subscription.add_argument("--host")
     subscription.add_argument("--jump")
     subscription.add_argument("--catalog")
     subscription.add_argument("--output")
     subscription.add_argument("--base-url")
-    subscription.add_argument("--access-file", required=True)
+    subscription.add_argument("--access-file")
+    subscription.add_argument("--name", default="builder")
+    subscription.add_argument("--formats", default="clash,v2ray")
+    subscription.add_argument("--access-mode", choices=["public", "token"], default="token")
+    subscription.add_argument("--revision")
+    subscription.add_argument("--execute", action="store_true")
+    subscription.add_argument("--keep", type=int, default=5)
+    subscription.add_argument("--older-than-days", type=int, default=30)
     subscription.add_argument("--mihomo")
     subscription.add_argument("--include-candidates", action="store_true")
     subscription.add_argument("--publish-config")
@@ -144,9 +154,22 @@ def menu(a):
             )
             continue
         if command == "subscription":
-            action = input("操作 build / publish / rollback / token：").strip()
-            args = [command, action, "--access-file", input("私有令牌文件：").strip()]
+            action = input("操作 build / publish / rollback / token / status / prune：").strip()
+            args = [command, action]
+            if action in ("build", "publish", "rollback", "token"):
+                access_file = input("私有令牌文件（公开模式留空）：").strip()
+                if access_file:
+                    args += ["--access-file", access_file]
             if action == "build":
+                args += [
+                    "--access-mode",
+                    input("访问方式 public / token [token]：").strip() or "token",
+                    "--formats",
+                    input("格式 clash / v2ray / clash,v2ray [clash,v2ray]：").strip()
+                    or "clash,v2ray",
+                    "--name",
+                    input("订阅名称 [builder]：").strip() or "builder",
+                ]
                 for flag, prompt in [
                     ("--catalog", "私有线路目录："),
                     ("--output", "新构建目录："),
@@ -154,7 +177,7 @@ def menu(a):
                     ("--mihomo", "Mihomo 可执行文件："),
                 ]:
                     args += [flag, input(prompt).strip()]
-            elif action in ("publish", "rollback"):
+            elif action in ("publish", "rollback", "status", "prune"):
                 args += ["--publish-config", input("发布配置 JSON：").strip()]
                 if action == "publish":
                     args += ["--bundle", input("构建目录：").strip()]
@@ -213,19 +236,32 @@ def main(argv=None):
             return 0 if result["all_passed"] else 1
         if a.command == "subscription":
             if a.host:
-                if a.action not in ("publish", "rollback") or not a.publish_config:
-                    raise Error("SSH subscription supports publish/rollback with --publish-config")
+                if (
+                    a.action not in ("publish", "rollback", "prune", "status")
+                    or not a.publish_config
+                ):
+                    raise Error(
+                        "SSH subscription requires publish/rollback/status/prune with --publish-config"
+                    )
                 from .remote import execute
 
-                files = {"publish.json": a.publish_config, "access.json": a.access_file}
+                files = {"publish.json": a.publish_config}
+                if a.access_file:
+                    files["access.json"] = a.access_file
                 args = [
                     "subscription",
                     a.action,
                     "--publish-config",
                     "__VRK_UPLOAD__/publish.json",
-                    "--access-file",
-                    "__VRK_UPLOAD__/access.json",
                 ]
+                if a.access_file:
+                    args += ["--access-file", "__VRK_UPLOAD__/access.json"]
+                if a.action == "prune":
+                    args += ["--keep", str(a.keep), "--older-than-days", str(a.older_than_days)]
+                    if a.execute:
+                        args += ["--execute"]
+                if a.revision:
+                    args += ["--revision", a.revision]
                 if a.action == "publish":
                     if not a.bundle:
                         raise Error("publish requires --bundle")
@@ -236,14 +272,28 @@ def main(argv=None):
                 print(execute(a.host, args, jump=a.jump, extra_files=files), end="")
                 return
             from .subscription import build, access
-            from .publishing import publish, rollback
+            from .publishing import publish, rollback, prune, status
 
             if a.action == "token":
+                if not a.access_file:
+                    raise Error("token requires --access-file")
                 access(a.access_file, a.rotate)
                 print("Private access file saved; publish to activate token changes")
                 return
+            if a.action == "status":
+                if not a.publish_config:
+                    raise Error("status requires --publish-config")
+                print(encode(status(read(a.publish_config))))
+                return
+            if a.action == "prune":
+                if not a.publish_config:
+                    raise Error("prune requires --publish-config")
+                print(encode(prune(read(a.publish_config), a.keep, a.older_than_days, a.execute)))
+                return
             if a.action == "build":
-                if not all((a.catalog, a.output, a.base_url, a.mihomo)):
+                if not all((a.catalog, a.output, a.base_url)) or (
+                    "clash" in a.formats.split(",") and not a.mihomo
+                ):
                     raise Error("build requires --catalog, --output, --base-url, --mihomo")
                 result = build(
                     read(a.catalog),
@@ -253,6 +303,9 @@ def main(argv=None):
                     a.access_file,
                     a.mihomo,
                     a.include_candidates,
+                    name=a.name,
+                    formats=a.formats,
+                    access_mode=a.access_mode,
                 )
             else:
                 if not a.publish_config or (a.action == "publish" and not a.bundle):
@@ -263,7 +316,7 @@ def main(argv=None):
                 result = (
                     publish(cfg, a.bundle, a.access_file, a.allow_candidates)
                     if a.action == "publish"
-                    else rollback(cfg, a.access_file, a.allow_candidates)
+                    else rollback(cfg, a.access_file, a.allow_candidates, a.revision)
                 )
             print(encode(result))
             return
@@ -314,8 +367,11 @@ def main(argv=None):
             args = [a.command]
             if a.command == "logs":
                 args += ["--lines", str(a.lines)]
-            if a.command == "rollback" and a.snapshot:
-                args += ["--snapshot", a.snapshot]
+            if a.command == "rollback":
+                if a.snapshot:
+                    args += ["--snapshot", a.snapshot]
+                if a.expected_generation:
+                    args += ["--expected-generation", a.expected_generation]
             if a.command == "upgrade":
                 args += ["--component", a.component, "--to", a.to]
             print(
@@ -394,7 +450,7 @@ def main(argv=None):
             deploy.backup()
             return
         if a.command == "rollback":
-            deploy.rollback(a.snapshot)
+            deploy.rollback(a.snapshot, a.expected_generation)
             return
         if a.command == "uninstall":
             deploy.uninstall()

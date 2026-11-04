@@ -584,10 +584,12 @@ def backup():
         return dest
 
 
-def rollback(path=None):
+def rollback(path=None, expected_generation=None):
     environment()
     with locked():
         old = state()
+        if expected_generation is not None and old.get("generation") != expected_generation:
+            raise Error("deployment changed since acceptance; refusing unrelated rollback")
         p = Path(path or old.get("previous_backup", ""))
         if not p.is_file() or p.parent != ROOT / "backups":
             raise Error("select a deployment snapshot from /var/lib/vrk/backups")

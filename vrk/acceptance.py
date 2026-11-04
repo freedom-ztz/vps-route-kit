@@ -25,12 +25,23 @@ def remote_apply(a, cases):
             out / "decision.json", {"decision": "remote_outcome_unknown_or_failed", "retry": False}
         )
         raise
+    atomic(out / "deployment.json", deployment)
     after = verify(cases, out / "after.jsonl")
     verdict = acceptance_decision(before, after)
     if verdict["decision"] == "rollback":
         if deployment.get("changed"):
             atomic(out / "decision.json", verdict)
-            execute(a.host, ["rollback"], jump=a.jump)
+            execute(
+                a.host,
+                [
+                    "rollback",
+                    "--snapshot",
+                    deployment["backup"],
+                    "--expected-generation",
+                    deployment["generation"],
+                ],
+                jump=a.jump,
+            )
             restored = verify(cases, out / "restored.jsonl")
             verdict["restored_passed"] = restored["all_declared_passed"]
         else:

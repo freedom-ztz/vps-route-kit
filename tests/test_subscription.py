@@ -94,16 +94,19 @@ class CatalogTests(unittest.TestCase):
             atomic(
                 Path(d) / "d.json",
                 {
+                    "completed": True,
                     "routes": {
                         "test": {
+                            "binding": catalog.binding(c, r, [], "batch", {"mihomo": "1.19.32"}),
                             "ok": True,
                             "fingerprint": catalog.fingerprint(c, r),
                             "exit_ipv4": r["expected_exit_ipv4"],
                         }
-                    }
+                    },
                 },
             )
             s = {
+                "bindings": {"test": catalog.binding(c, r, [], "batch", {"mihomo": "1.19.32"})},
                 "completed": True,
                 "all_declared_passed": True,
                 "elapsed_seconds": 1800,
@@ -366,12 +369,16 @@ class PublicationTransactionTests(unittest.TestCase):
         stack = ExitStack()
         stack.enter_context(patch("vrk.publishing.os.geteuid", return_value=0))
         stack.enter_context(patch("vrk.publishing.os.chown"))
+        stack.enter_context(patch("vrk.publishing.health"))
         stack.enter_context(
             patch("vrk.publishing.grp.getgrnam", return_value=SimpleNamespace(gr_gid=os.getgid()))
         )
         units = Path(d) / "units"
         units.mkdir()
         stack.enter_context(patch("vrk.publishing.SYSTEMD_UNITS", units))
+        rotation = Path(d) / "logrotate"
+        rotation.mkdir()
+        stack.enter_context(patch("vrk.publishing.LOGROTATE", rotation))
         run = stack.enter_context(
             patch(
                 "vrk.publishing.run",

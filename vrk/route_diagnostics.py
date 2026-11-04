@@ -96,7 +96,7 @@ def diagnose(c, cases, output):
     output = Path(output)
     if output.exists():
         raise Error("diagnosis output exists; preserve prior evidence")
-    if set(cases) != {"routes"} or not isinstance(cases["routes"], dict):
+    if set(cases) - {"routes", "evidence"} or not isinstance(cases["routes"], dict):
         raise Error("diagnosis requires named route cases")
     routes = {r["id"]: r for r in c["routes"]}
     if set(cases["routes"]) - routes.keys():
@@ -122,6 +122,17 @@ def diagnose(c, cases, output):
             exercises = exercise(spec["proxy"], spec["exercise"]) if spec.get("exercise") else {}
             result["routes"][key] = {
                 "fingerprint": catalog.fingerprint(c, routes[key]),
+                "binding": (
+                    catalog.binding(
+                        c,
+                        routes[key],
+                        spec["targets"],
+                        cases["evidence"]["batch_id"],
+                        cases["evidence"]["core_versions"],
+                    )
+                    if cases.get("evidence")
+                    else {}
+                ),
                 "checks": records,
                 "exercises": exercises,
                 "exit_ipv4": actual,

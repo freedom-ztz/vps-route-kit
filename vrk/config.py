@@ -215,10 +215,9 @@ def validate(c):
                 else:
                     address(v)
     # Internal bridge ports are fixed, declared, and included in conflict checks.
-    if any(l["protocol"] == "hysteria2" for l in c.get("listeners", [])) and routing != {
-        "default": "local",
-        "rules": [],
-    }:
+    from .render import bridge_required
+
+    if bridge_required(c):
         bind("tcp", "127.0.0.1", 18080)
         bind("udp", "127.0.0.1", 18080)
     for i, key in enumerate(sorted(referenced_nodes(c))):

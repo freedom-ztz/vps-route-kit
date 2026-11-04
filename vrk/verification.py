@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 import time
 import urllib.parse
-from .util import Error, atomic, run
+from .util import Error, atomic, run, read
 
 TIMINGS = (
     "http_code",
@@ -33,6 +33,7 @@ def validate_cases(c):
         "connect_timeout",
         "timeout",
         "excluded",
+        "evidence",
     }:
         raise Error("invalid verification manifest")
     if not isinstance(c.get("proxies"), dict) or not c["proxies"]:
@@ -153,6 +154,17 @@ def probe(name, proxy, target, connect_timeout, timeout):
 
 def verify(c, output):
     c = validate_cases(c)
+    bindings = {}
+    if c.get("evidence"):
+        from . import catalog
+
+        e = c["evidence"]
+        inventory = catalog.validate(read(e["catalog"]))
+        routes = {r["id"]: r for r in inventory["routes"]}
+        for key in c["proxies"]:
+            bindings[key] = catalog.binding(
+                inventory, routes[key], c["targets"], e["batch_id"], e["core_versions"]
+            )
     output = Path(output)
     summary_path = output.with_name(output.name + ".summary.json")
     if output.exists() or summary_path.exists():
@@ -163,7 +175,12 @@ def verify(c, output):
     counts = {}
     rounds_done = 0
     completed = False
-    summary = {"completed": False, "excluded": c.get("excluded", {}), "cases": counts}
+    summary = {
+        "bindings": bindings,
+        "completed": False,
+        "excluded": c.get("excluded", {}),
+        "cases": counts,
+    }
     try:
         with (
             os.fdopen(fd, "w") as f,

@@ -82,6 +82,8 @@ def origin_url(value):
 
 
 def access(path, rotate=False):
+    if path is None:
+        raise Error("token access requires --access-file")
     path = Path(path)
     if path.is_symlink():
         raise Error("access file must not be a symlink")
@@ -107,18 +109,42 @@ def groups(names, provider=None):
     return [{"name": "外网", "type": "select", "proxies": ["自动", "手动"]}, fallback, manual]
 
 
-def build(c, base, output, base_url, access_file, mihomo, candidates=False):
+def build(
+    c,
+    base,
+    output,
+    base_url,
+    access_file,
+    mihomo,
+    candidates=False,
+    *,
+    name="builder",
+    formats="clash,v2ray",
+    access_mode="token",
+):
     catalog.validate(c)
+    catalog.name(name)
+    formats = formats.split(",") if isinstance(formats, str) else list(formats)
+    if not formats or len(set(formats)) != len(formats) or set(formats) - {"clash", "v2ray"}:
+        raise Error("formats must select clash and/or v2ray")
+    if access_mode not in ("public", "token"):
+        raise Error("invalid access mode")
+    if access_mode == "public" and c.get("company"):
+        raise Error("public subscriptions cannot include company configuration")
     output = Path(output)
     if output.exists():
         raise Error("build output exists; choose a new release directory")
-    url = origin_url(base_url) + "/" + access(access_file)
+    url = origin_url(base_url)
+    if access_mode == "token":
+        if not access_file:
+            raise Error("token mode requires --access-file")
+        url += "/" + access(access_file)
     routes = catalog.selected(c, base, candidates)
     nodes, names = catalog.proxies(c, routes)
     from .export import mihomo_uri
 
     shareable = [n for n in nodes if n["name"] in names and not n.get("dialer-proxy")]
-    if not shareable:
+    if "v2ray" in formats and not shareable:
         raise Error(
             "no V2Ray-shareable routes; client chains require Clash groups, use transparent server-side relays or separate routes"
         )
@@ -126,7 +152,7 @@ def build(c, base, output, base_url, access_file, mihomo, candidates=False):
     lock = c.get("rules") or read(Path(__file__).with_name("rules.lock.json"))
     if set(lock) != {"domains", "cidrs"}:
         raise Error("domestic domain and CIDR locks required")
-    rules = {k: locked_rule(lock[k], k) for k in ("domains", "cidrs")}
+    rules = {k: locked_rule(lock[k], k) for k in ("domains", "cidrs")} if "clash" in formats else {}
     dns = {
         "bootstrap": ["223.5.5.5", "119.29.29.29"],
         "domestic": ["https://dns.alidns.com/dns-query"],
@@ -134,15 +160,23 @@ def build(c, base, output, base_url, access_file, mihomo, candidates=False):
         **c.get("dns", {}),
     }
     company = c.get("company", {})
+    local = c.get("local", {})
+    if local and (set(local) != {"domains", "dns"} or not local["domains"] or not local["dns"]):
+        raise Error("local requires domains and DNS")
     policy = {"rule-set:domestic-domains": dns["domestic"]}
+    for d in local.get("domains", []):
+        catalog.address(d)
+        policy["+." + d] = local["dns"]
     for d in company.get("domains", []):
         policy["+." + d] = company["dns"]
+    rule_version = digest(encode(rules))[:20]
+    rule_base = url + "/rules/" + rule_version if access_mode == "public" else url + "/rules"
     providers = {
         f"domestic-{k}": {
             "type": "http",
             "behavior": "domain" if k == "domains" else "ipcidr",
             "format": "text",
-            "url": f"{url}/rules/{k}.txt",
+            "url": f"{rule_base}/{k}.txt",
             "path": f"./rules/vrk-{k}.txt",
             "interval": 86400,
             "proxy": "外网",
@@ -173,13 +207,17 @@ def build(c, base, output, base_url, access_file, mihomo, candidates=False):
             "listen": "127.0.0.1:1053",
             "ipv6": False,
             "enhanced-mode": "fake-ip",
-            "fake-ip-filter": ["*.lan", "*.local"] + ["+." + d for d in company.get("domains", [])],
+            "fake-ip-filter": ["*.lan", "*.local"]
+            + ["+." + d for d in company.get("domains", []) + local.get("domains", [])],
             "default-nameserver": dns["bootstrap"],
             "proxy-server-nameserver": dns["domestic"],
             "nameserver-policy": policy,
             "nameserver": dns["remote"],
         },
-        "rules": ["DOMAIN-SUFFIX," + d + ",DIRECT" for d in company.get("domains", [])]
+        "rules": [
+            "DOMAIN-SUFFIX," + d + ",DIRECT"
+            for d in company.get("domains", []) + local.get("domains", [])
+        ]
         + ["IP-CIDR," + d + ",DIRECT,no-resolve" for d in company.get("cidrs", [])]
         + direct
         + [
@@ -193,7 +231,12 @@ def build(c, base, output, base_url, access_file, mihomo, candidates=False):
             "vrk": {
                 "type": "http",
                 "proxy": "DIRECT",
-                "url": url + "/nodes.json",
+                "url": url
+                + (
+                    "/clash/providers/" + name + ".yaml"
+                    if access_mode == "public"
+                    else "/nodes.json"
+                ),
                 "path": "./proxy_providers/vrk.json",
                 "interval": 3600,
                 "health-check": {"enable": True, **HEALTH},
@@ -219,7 +262,11 @@ def build(c, base, output, base_url, access_file, mihomo, candidates=False):
             )
     example["proxy-groups"] += hops
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "name": name,
+        "access_mode": access_mode,
+        "selected_formats": formats,
+        "rule_version": rule_version,
         "candidate_only": candidates,
         "routes": [
             {"id": r["id"], "country": r["exit_country"], "fingerprint": catalog.fingerprint(c, r)}
@@ -243,6 +290,7 @@ def build(c, base, output, base_url, access_file, mihomo, candidates=False):
         },
         "artifacts": {},
     }
+    manifest["formats"] = {k: v for k, v in manifest["formats"].items() if k in formats}
     output.parent.mkdir(parents=True, exist_ok=True)
     temp = Path(tempfile.mkdtemp(prefix=".vrk-build-", dir=output.parent))
     try:
@@ -252,34 +300,41 @@ def build(c, base, output, base_url, access_file, mihomo, candidates=False):
             "openwrt-example.json": example,
         }.items():
             atomic(temp / k, v)
-        atomic(temp / "v2ray.txt", v2ray)
+        if "v2ray" in formats:
+            atomic(temp / "v2ray.txt", v2ray)
         for k, data in rules.items():
             atomic(temp / "rules" / (k + ".txt"), data)
-        # Use local fixed rule files while validating, never bootstrap over the subscription being built.
-        check = read(temp / "desktop.json")
-        for k, p in check["rule-providers"].items():
-            p["type"] = "file"
-            p["path"] = str(temp / "rules" / (k.removeprefix("domestic-") + ".txt"))
-            p.pop("url")
-            p.pop("interval")
-            p.pop("proxy", None)
-        atomic(temp / "validation.json", check)
-        result = run(
-            [mihomo, "-t", "-f", temp / "validation.json", "-d", temp],
-            check=False,
-            timeout=90,
-        )
-        if result.returncode:
-            atomic(
-                output.with_name(output.name + ".validation.log"),
-                getattr(result, "stdout", "") + getattr(result, "stderr", ""),
+        if "clash" in formats:
+            # Use local fixed rule files while validating, never bootstrap over the subscription being built.
+            check = read(temp / "desktop.json")
+            for k, p in check["rule-providers"].items():
+                p["type"] = "file"
+                p["path"] = str(temp / "rules" / (k.removeprefix("domestic-") + ".txt"))
+                p.pop("url")
+                p.pop("interval")
+                p.pop("proxy", None)
+            atomic(temp / "validation.json", check)
+            result = run(
+                [mihomo, "-t", "-f", temp / "validation.json", "-d", temp],
+                check=False,
+                timeout=90,
             )
-            raise Error(
-                "Mihomo rejects subscription; inspect private validation log; no release created"
-            )
-        (temp / "validation.json").unlink()
-        shutil.rmtree(temp / "state", ignore_errors=True)
-        for f in FILES:
+            if result.returncode:
+                atomic(
+                    output.with_name(output.name + ".validation.log"),
+                    getattr(result, "stdout", "") + getattr(result, "stderr", ""),
+                )
+                raise Error(
+                    "Mihomo rejects subscription; inspect private validation log; no release created"
+                )
+            (temp / "validation.json").unlink()
+            shutil.rmtree(temp / "state", ignore_errors=True)
+        if "clash" not in formats:
+            for f in ("desktop.json", "nodes.json", "openwrt-example.json"):
+                (temp / f).unlink()
+            shutil.rmtree(temp / "rules", ignore_errors=True)
+        files = [f for f in FILES if (temp / f).is_file()]
+        for f in files:
             if f != "manifest.json":
                 manifest["artifacts"][f] = digest((temp / f).read_bytes())
         manifest["revision"] = digest(encode(manifest))[:20]

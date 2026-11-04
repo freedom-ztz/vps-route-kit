@@ -253,3 +253,17 @@ git diff --check
 - [Realm](https://github.com/zhboner/realm)：固定四层转发。
 - [Mihomo](https://wiki.metacubex.one/config/proxies/transport/)：客户端导出接口。
 - [v2rayN 订阅说明](https://github.com/2dust/v2rayN/wiki/Description-of-subscription)：标准分享链接及订阅格式。
+
+## 固定订阅链接
+
+支持公开固定路径或带令牌的私有路径，默认仍使用令牌。公开模式会允许任何人下载节点凭据；不要加入公司配置。示例：
+
+```sh
+vrk subscription build --catalog /private/catalog.json --output /private/release \
+  --name builder --formats clash,v2ray --access-mode public \
+  --base-url https://sub.example.com --mihomo /path/to/mihomo
+```
+
+公开地址为 `/clash/builder.yaml`（桌面完整配置）、`/clash/providers/builder.yaml`（OpenWrt 节点源）、`/v2ray/builder.txt`（Base64 URI）。可单独选择 `--formats clash` 或 `--formats v2ray`；V2Ray 单独构建无需 Mihomo 或国内规则下载。链接更新不等于接管系统代理；OpenWrt 仅更新节点。
+
+正式构建要求线路具备同批次、同配置的完整连接诊断和 30 分钟稳定性证据。候选仅用于隔离测试。发布、指定版本回滚、证书检查和清理见[部署指南](docs/deployment.md)。
