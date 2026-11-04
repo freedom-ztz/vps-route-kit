@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vps-route-kit"
-version = "0.1.1"
+version = "0.2.0"
 description = "Explicit systemd deployment for REALITY, XHTTP, Hysteria 2 and relays"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,7 +22,7 @@ vrk = "vrk.cli:main"
 packages = ["vrk"]
 
 [tool.setuptools.package-data]
-vrk = ["versions.lock.json"]
+vrk = ["versions.lock.json", "rules.lock.json"]
 
 [project.optional-dependencies]
 dev = ["black==25.1.0"]

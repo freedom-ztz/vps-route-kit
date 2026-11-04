@@ -165,3 +165,33 @@ def export(c, s, kind, address=None, ports=None, listener=None, name_prefix="", 
             output.append(u + "#" + urllib.parse.quote(n["name"]))
         return "\n".join(output) + "\n"
     raise Error("unknown export format")
+
+
+def mihomo_uri(node):
+    """Reuse the canonical URI exporter; client-side chains cannot fit in one URI."""
+    if node.get("dialer-proxy"):
+        raise Error("client-side dialer-proxy cannot be represented by a share URI")
+    protocol = (
+        "hysteria2"
+        if node["type"] == "hysteria2"
+        else "xhttp" if node.get("network") == "xhttp" else "vision"
+    )
+    listener = {
+        "id": node["name"],
+        "protocol": protocol,
+        "port": node["port"],
+        "secret": "uri",
+        "server_name": node.get("sni", node.get("servername")),
+    }
+    secret = (
+        {"password": node["password"]}
+        if protocol == "hysteria2"
+        else {
+            "uuid": node["uuid"],
+            "public_key": node["reality-opts"]["public-key"],
+            "short_id": node["reality-opts"]["short-id"],
+        }
+    )
+    if protocol == "xhttp":
+        listener["path"] = node["xhttp-opts"]["path"]
+    return export({"address": node["server"], "listeners": [listener]}, {"uri": secret}, "uri")

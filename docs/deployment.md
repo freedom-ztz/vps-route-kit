@@ -56,3 +56,32 @@ vrk upgrade --config /private/server.json --component xray --to REVIEWED_VERSION
 先在 DNS 提供商创建正确的仅 DNS A 记录。项目不保存 DNS 账户或 API Token。HTTP-01 无法在被占用的 80 端口旁自动工作；请选择现有证书文件，不自动重写 Nginx。
 
 证书由 Hysteria 内置 ACME 自动维护。验证日志中的签发/维护状态和实际 TLS；不要调整系统时间模拟未来续期。自有静态 HTTP/3 页面与 REALITY 的 TCP 监听可以同时存在，但不代表 TCP/UDP 网站表现完全相同。
+
+## 静态订阅发布
+
+参考 [发布配置](../examples/subscription-publish.json)。在 Web 主机提供标准 Nginx、openssl、systemd、runuser、curl 及可读取的有效证书。指定独立 root、domain、base_url、listen、port、certificate、key、worker user（默认 www-data）和 nginx 二进制。base_url 为 HTTPS 源站，域名和端口必须与监听一致。证书由既有流程维护，续期后须重载对应静态 Nginx 单元以加载新证书；不为发布器改动网站、443 或 ACME 80。
+
+`subscription publish` 可本机 root 执行，也可通过 `--host/--jump` 将构建和私有访问文件临时上传。只维护专用发布目录和按目录派生名称的 vrk-subscription-*.service。已有目录无所有权记录、端口占用、证书无效、文件哈希错误、空订阅或外部修改服务单元时停止。nginx -t 后原子切换发布内容，仅启动/重载静态站点，代理服务不重启。
+
+访问文件首次生成随机令牌，保存在仓库外。链接路径为 `/令牌/nodes.json`、`/令牌/desktop.json`、`/令牌/v2ray.txt`。关闭目录列表、访问日志和共享缓存；原始配置与私钥不放进托管目录。令牌只控制订阅获取，不撤销已经下载的代理账号。
+
+```sh
+vrk subscription token --access-file /private/access.json --rotate
+# 发布后才启用新令牌并撤销旧令牌
+vrk subscription publish --bundle /private/release-2 --publish-config /private/publish.json \
+  --access-file /private/access.json --host root@web-host
+vrk subscription rollback --publish-config /private/publish.json \
+  --access-file /private/access.json --host root@web-host
+```
+
+回滚恢复上一份产物，但保留当前访问令牌，避免重新启用已撤销链接。首次导入需要访问源站；已加载节点和规则不依赖订阅服务器持续在线。既有缓存不是首次无缓存时的可用保证。
+
+发布时国内规则是冻结版本，随同订阅静态托管。规则更新须重新下载校验、构建和发布；客户端更新失败保留上一份有效缓存。没有后台网络策略生成器或规则更新脚本。
+
+## 部署影响与真实连接验收
+
+`plan` 的 service_impact 列出新增、移除、预计重启及受影响监听；共享 Xray 的入口合并展示。预览不生成密钥，导入凭据变化仍须应用时核对。
+
+`apply/upgrade` 可选 `--verify-cases /private/cases.json --verify-output /private/new-acceptance-dir`。SSH 时从管理机运行前后检查；本机时在执行主机检查。清单至少两个明确 HTTPS 目标，部署验收建议 rounds=1、interval=0；长期观察独立使用 verify。输出保存 before/after、decision，以及发生回滚时的 restored。
+
+单站失败或部署前已有异常不直接触发回滚；至少两个此前正常目标同时退化才恢复本批。重复 apply 未改变配置时不因外部失败回滚旧批次。结果无法确定时保留现场、返回非零；SSH 结果未知时不得自动重复部署。该机制不能仅靠 HTTP 状态精确归因，仍需分段证据。

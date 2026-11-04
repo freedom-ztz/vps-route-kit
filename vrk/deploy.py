@@ -252,8 +252,92 @@ def unit_runtime(content):
     )
 
 
-def apply(c, secrets_file=None, lock_file=None):
+def impact(c, old, lock):
+    """Conservative service impact without generating keys or downloading cores."""
+    previous = old.get("config", {})
+
+    def services(cfg):
+        if not cfg:
+            return {}
+        secrets = {}
+        for item in list(cfg.get("listeners", [])) + list(cfg.get("nodes", {}).values()):
+            secrets[item["secret"]] = {
+                "uuid": "stable",
+                "private_key": "stable",
+                "public_key": "stable",
+                "short_id": "stable",
+                "password": "stable",
+            }
+        files, args = render(cfg, secrets, str(ROOT))
+        result = {}
+        for n, (component, command) in args.items():
+            names = [
+                Path(a).name for a in command if str(a).startswith(str(ROOT / "current") + "/")
+            ]
+            result[n] = (component, [files.get(f) for f in names])
+        if cfg.get("manage_firewall"):
+            from .firewall import rules
+
+            result["vrk-firewall"] = ("nft", [rules(cfg)])
+        return result
+
+    before, after = services(previous), services(c)
+    changes = []
+    for n in sorted(set(before) | set(after)):
+        action = "add" if n not in before else "remove" if n not in after else "unchanged"
+        if action == "unchanged":
+            component = after[n][0]
+            if before[n] != after[n] or old.get("versions", {}).get(component) != lock.get(
+                component
+            ):
+                action = "restart"
+        listeners = [
+            l["id"]
+            for l in (c if n in after else previous).get("listeners", [])
+            if (n == "vrk-xray" and l["protocol"] != "hysteria2") or n == "vrk-hy-" + l["id"]
+        ]
+        if n == "vrk-xray":
+            from .render import bridge_required
+
+            if bridge_required(c):
+                listeners += [l["id"] for l in c["listeners"] if l["protocol"] == "hysteria2"]
+        changes.append(
+            {"service": n, "action": action, "affected_listeners": sorted(set(listeners))}
+        )
+    return {
+        "services": changes,
+        "note": "Shared Xray listeners are affected together; imported credential changes require apply-time inspection.",
+    }
+
+
+def acceptance_decision(before, after):
+    failed_targets = {
+        k.rsplit("/", 1)[1]
+        for k, v in after["cases"].items()
+        if v["failures"] and before["cases"].get(k, {}).get("failures") == 0
+    }
+    return {
+        "before_passed": before["all_declared_passed"],
+        "after_passed": after["all_declared_passed"],
+        "decision": (
+            "rollback"
+            if len(failed_targets) >= 2
+            else "passed" if after["all_declared_passed"] else "undetermined_external_failure"
+        ),
+    }
+
+
+def apply(c, secrets_file=None, lock_file=None, verify_cases=None, verify_output=None):
     environment()
+    baseline = None
+    if verify_cases:
+        from .verification import verify
+
+        if not verify_output or len(verify_cases.get("targets", [])) < 2:
+            raise Error("acceptance requires a new output directory and at least two HTTPS targets")
+        verify_output = Path(verify_output)
+        verify_output.mkdir(mode=0o700, parents=True, exist_ok=False)
+        baseline = verify(verify_cases, verify_output / "before.jsonl")
     with locked():
         if (ROOT / "pending.json").exists():
             restore(read(ROOT / "pending.json"))
@@ -335,6 +419,12 @@ def apply(c, secrets_file=None, lock_file=None):
                 if systemctl("is-active", n, check=False).stdout.strip() != "active":
                     systemctl("start", n)
             wait_healthy(old)
+            if verify_cases:
+                after = verify(verify_cases, verify_output / "after.jsonl")
+                verdict = acceptance_decision(baseline, after)
+                if verdict["decision"] == "rollback":
+                    verdict["decision"] = "undetermined_external_failure"
+                atomic(verify_output / "decision.json", verdict)
             print(encode({"changed": False, "generation": generation}))
             return old
         generations = ROOT / "generations"
@@ -441,10 +531,23 @@ def apply(c, secrets_file=None, lock_file=None):
             }
             atomic(ROOT / "state.json", new)
             wait_healthy(new)
+            if verify_cases:
+                after = verify(verify_cases, verify_output / "after.jsonl")
+                verdict = acceptance_decision(baseline, after)
+                atomic(verify_output / "decision.json", verdict)
+                if verdict["decision"] == "rollback":
+                    raise Error(
+                        "multiple previously healthy targets regressed; restoring previous generation"
+                    )
+                validation["network_acceptance"] = verdict["decision"]
             atomic(ROOT / "secrets.json", s)
             (ROOT / "pending.json").unlink()
         except BaseException:
             restore(snapshot)
+            if verify_cases:
+                from .verification import verify
+
+                verify(verify_cases, verify_output / "restored.jsonl")
             raise
         print(
             encode(

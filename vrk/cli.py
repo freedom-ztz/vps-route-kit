@@ -42,6 +42,8 @@ def parser():
         if command in ["apply", "upgrade"]:
             s.add_argument("--secrets")
             s.add_argument("--lock")
+            s.add_argument("--verify-cases")
+            s.add_argument("--verify-output")
         if command == "init":
             s.add_argument("--output", default="vrk.json")
         if command == "export":
@@ -72,6 +74,28 @@ def parser():
             s.add_argument("--up-url", required=True)
             s.add_argument("--rounds", type=int, default=3)
             s.add_argument("--output", required=True)
+    cat = sub.add_parser("catalog")
+    cat.add_argument("action", choices=["validate", "plan"])
+    cat.add_argument("--catalog", required=True)
+    cat.add_argument("--previous")
+    subscription = sub.add_parser("subscription")
+    subscription.add_argument("action", choices=["build", "publish", "rollback", "token"])
+    subscription.add_argument("--host")
+    subscription.add_argument("--jump")
+    subscription.add_argument("--catalog")
+    subscription.add_argument("--output")
+    subscription.add_argument("--base-url")
+    subscription.add_argument("--access-file", required=True)
+    subscription.add_argument("--mihomo")
+    subscription.add_argument("--include-candidates", action="store_true")
+    subscription.add_argument("--publish-config")
+    subscription.add_argument("--bundle")
+    subscription.add_argument("--allow-candidates", action="store_true")
+    subscription.add_argument("--rotate", action="store_true")
+    diagnose = sub.add_parser("diagnose")
+    diagnose.add_argument("--catalog", required=True)
+    diagnose.add_argument("--cases", required=True)
+    diagnose.add_argument("--output", required=True)
     return p
 
 
@@ -87,10 +111,13 @@ def menu(a):
         "8": "export",
         "9": "uninstall",
         "10": "verify",
+        "11": "catalog",
+        "12": "subscription",
+        "13": "diagnose",
     }
     while True:
         print(
-            "\nVPS Route Kit\n1 查看变更  2 部署配置  3 服务状态  4 诊断\n5 日志  6 备份  7 回滚  8 导出节点  9 卸载服务  10 网络验收  0 退出\n节点、规则和证书设置：编辑 "
+            "\nVPS Route Kit\n1 查看变更  2 部署配置  3 服务状态  4 诊断\n5 日志  6 备份  7 回滚  8 导出节点  9 卸载服务  10 网络验收\n11 线路目录  12 订阅管理  13 分段诊断  0 退出\n节点、规则和证书设置：编辑 "
             + a.config
             + " 后使用“查看变更”和“部署配置”。"
         )
@@ -100,6 +127,46 @@ def menu(a):
         if choice not in choices:
             continue
         command = choices[choice]
+        if command == "catalog":
+            main([command, "plan", "--catalog", input("私有线路目录 JSON：").strip()])
+            continue
+        if command == "diagnose":
+            main(
+                [
+                    command,
+                    "--catalog",
+                    input("私有线路目录 JSON：").strip(),
+                    "--cases",
+                    input("诊断清单 JSON：").strip(),
+                    "--output",
+                    input("新结果 JSON：").strip(),
+                ]
+            )
+            continue
+        if command == "subscription":
+            action = input("操作 build / publish / rollback / token：").strip()
+            args = [command, action, "--access-file", input("私有令牌文件：").strip()]
+            if action == "build":
+                for flag, prompt in [
+                    ("--catalog", "私有线路目录："),
+                    ("--output", "新构建目录："),
+                    ("--base-url", "HTTPS 源站："),
+                    ("--mihomo", "Mihomo 可执行文件："),
+                ]:
+                    args += [flag, input(prompt).strip()]
+            elif action in ("publish", "rollback"):
+                args += ["--publish-config", input("发布配置 JSON：").strip()]
+                if action == "publish":
+                    args += ["--bundle", input("构建目录：").strip()]
+                if a.host:
+                    args += ["--host", a.host]
+                    if a.jump:
+                        args += ["--jump", a.jump]
+            elif action != "token":
+                print("未知订阅操作")
+                continue
+            main(args)
+            continue
         args = [command]
         if command in ("apply", "plan"):
             args += ["--config", a.config]
@@ -125,6 +192,81 @@ def main(argv=None):
     os.umask(0o077)
     a = parser().parse_args(argv)
     try:
+        if a.command == "catalog":
+            from .catalog import report
+
+            print(
+                encode(
+                    report(
+                        read(a.catalog),
+                        Path(a.catalog).parent,
+                        read(a.previous) if a.previous else None,
+                    )
+                )
+            )
+            return
+        if a.command == "diagnose":
+            from .route_diagnostics import diagnose
+
+            result = diagnose(read(a.catalog), read(a.cases), a.output)
+            print(encode(result))
+            return 0 if result["all_passed"] else 1
+        if a.command == "subscription":
+            if a.host:
+                if a.action not in ("publish", "rollback") or not a.publish_config:
+                    raise Error("SSH subscription supports publish/rollback with --publish-config")
+                from .remote import execute
+
+                files = {"publish.json": a.publish_config, "access.json": a.access_file}
+                args = [
+                    "subscription",
+                    a.action,
+                    "--publish-config",
+                    "__VRK_UPLOAD__/publish.json",
+                    "--access-file",
+                    "__VRK_UPLOAD__/access.json",
+                ]
+                if a.action == "publish":
+                    if not a.bundle:
+                        raise Error("publish requires --bundle")
+                    files["bundle"] = a.bundle
+                    args += ["--bundle", "__VRK_UPLOAD__/bundle"]
+                if a.allow_candidates:
+                    args += ["--allow-candidates"]
+                print(execute(a.host, args, jump=a.jump, extra_files=files), end="")
+                return
+            from .subscription import build, access
+            from .publishing import publish, rollback
+
+            if a.action == "token":
+                access(a.access_file, a.rotate)
+                print("Private access file saved; publish to activate token changes")
+                return
+            if a.action == "build":
+                if not all((a.catalog, a.output, a.base_url, a.mihomo)):
+                    raise Error("build requires --catalog, --output, --base-url, --mihomo")
+                result = build(
+                    read(a.catalog),
+                    Path(a.catalog).parent,
+                    a.output,
+                    a.base_url,
+                    a.access_file,
+                    a.mihomo,
+                    a.include_candidates,
+                )
+            else:
+                if not a.publish_config or (a.action == "publish" and not a.bundle):
+                    raise Error(
+                        "publication requires --publish-config and publish requires --bundle"
+                    )
+                cfg = read(a.publish_config)
+                result = (
+                    publish(cfg, a.bundle, a.access_file, a.allow_candidates)
+                    if a.action == "publish"
+                    else rollback(cfg, a.access_file, a.allow_candidates)
+                )
+            print(encode(result))
+            return
         if a.command == "menu":
             return menu(a)
         if a.command == "init":
@@ -137,6 +279,12 @@ def main(argv=None):
             validate(read(a.config))
             print("Configuration valid")
             return
+        if getattr(a, "host", None) and getattr(a, "verify_cases", None):
+            from .acceptance import remote_apply
+
+            result = remote_apply(a, read(a.verify_cases))
+            print(encode(result))
+            return 0 if result["acceptance"]["decision"] == "passed" else 1
         if getattr(a, "host", None):
             from .remote import execute
 
@@ -217,6 +365,7 @@ def main(argv=None):
                             for t, h, p in c["_bindings"]
                             if h not in ("127.0.0.1", "::1")
                         ],
+                        "service_impact": deploy.impact(c, old, read(a.lock or LOCK)),
                         "acme_tcp80": any(
                             l.get("certificate", {}).get("mode") == "acme" for l in c["listeners"]
                         ),
@@ -229,7 +378,17 @@ def main(argv=None):
                 lock = read(a.lock or LOCK)
                 if lock[a.component]["version"] != a.to:
                     raise Error("target version must exist in the reviewed lock file")
-            deploy.apply(read(a.config), a.secrets, a.lock)
+            result = deploy.apply(
+                read(a.config),
+                a.secrets,
+                a.lock,
+                read(a.verify_cases) if a.verify_cases else None,
+                a.verify_output,
+            )
+            if a.verify_cases:
+                decision = Path(a.verify_output) / "decision.json"
+                if not decision.exists() or read(decision).get("decision") != "passed":
+                    return 1
             return
         if a.command == "backup":
             deploy.backup()

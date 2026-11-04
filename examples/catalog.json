@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "hosts": {
+    "sg": {
+      "address": "203.0.113.20"
+    },
+    "hk": {
+      "address": "192.0.2.10"
+    }
+  },
+  "nodes": {
+    "sg-vision": {
+      "type": "vless",
+      "server": "203.0.113.20",
+      "port": 24443,
+      "uuid": "REPLACE_UUID",
+      "tls": true,
+      "servername": "www.example.com",
+      "client-fingerprint": "chrome",
+      "reality-opts": {
+        "public-key": "REPLACE_PUBLIC_KEY",
+        "short-id": "abcd"
+      },
+      "network": "tcp",
+      "flow": "xtls-rprx-vision"
+    }
+  },
+  "routes": [
+    {
+      "id": "sg-direct",
+      "node": "sg-vision",
+      "path": [
+        "sg"
+      ],
+      "exit_host": "sg",
+      "exit_country": "SG",
+      "expected_exit_ipv4": "203.0.113.20",
+      "acceptance": {
+        "diagnosis": "diagnosis.json",
+        "stability": "observation.jsonl.summary.json"
+      }
+    }
+  ]
+}

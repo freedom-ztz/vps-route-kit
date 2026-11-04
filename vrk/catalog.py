@@ -1,0 +1,229 @@
+"""Private route inventory; public reports contain identities, never node credentials."""
+
+import copy
+import ipaddress
+import re
+from pathlib import Path
+from .config import address, name, port
+from .util import Error, digest, encode, read
+
+
+def require(ok, message):
+    if not ok:
+        raise Error(message)
+
+
+def validate(c):
+    require(isinstance(c, dict) and c.get("schema_version") == 1, "invalid catalog version")
+    require(
+        set(c) <= {"schema_version", "hosts", "nodes", "routes", "dns", "company", "rules"},
+        "unknown catalog field",
+    )
+    hosts, nodes, routes = c.get("hosts"), c.get("nodes"), c.get("routes")
+    require(isinstance(hosts, dict) and bool(hosts), "hosts must be a nonempty object")
+    require(isinstance(nodes, dict) and bool(nodes), "nodes must be a nonempty object")
+    require(isinstance(routes, list) and bool(routes), "routes must be a nonempty array")
+    for key, h in hosts.items():
+        name(key)
+        require(isinstance(h, dict) and set(h) <= {"address", "ssh", "jump"}, "invalid host")
+        address(h.get("address"))
+        for field in ("ssh", "jump"):
+            if field in h:
+                require(
+                    bool(re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.@:-]*", h[field])),
+                    "invalid SSH host",
+                )
+    for key, n in nodes.items():
+        name(key)
+        require(
+            isinstance(n, dict) and n.get("type") in ("vless", "hysteria2"),
+            "unsupported catalog node",
+        )
+        address(n.get("server"))
+        port(n.get("port"))
+        require(
+            n.get("skip-cert-verify", False) is False,
+            "certificate verification must remain enabled",
+        )
+        if n["type"] == "vless":
+            require(
+                n.get("tls") is True and bool(n.get("uuid")) and bool(n.get("reality-opts")),
+                "VLESS requires REALITY credentials",
+            )
+            require(n.get("network", "tcp") in ("tcp", "xhttp"), "unsupported VLESS transport")
+        else:
+            require(
+                bool(n.get("password")) and bool(n.get("sni")), "Hysteria credentials/SNI required"
+            )
+        if "dialer-proxy" in n:
+            require(
+                n["dialer-proxy"] in nodes and n["dialer-proxy"] != key, "invalid carrier reference"
+            )
+
+    def visit(key, stack):
+        require(key not in stack, "carrier cycle")
+        if nodes[key].get("dialer-proxy"):
+            visit(nodes[key]["dialer-proxy"], stack | {key})
+
+    for key in nodes:
+        visit(key, set())
+    seen = set()
+    for r in routes:
+        require(
+            isinstance(r, dict)
+            and set(r)
+            <= {
+                "id",
+                "node",
+                "path",
+                "exit_host",
+                "exit_country",
+                "expected_exit_ipv4",
+                "acceptance",
+            },
+            "invalid route fields",
+        )
+        name(r.get("id"))
+        require(r["id"] not in seen, "duplicate route id")
+        seen.add(r["id"])
+        require(r.get("node") in nodes, "unknown route node")
+        path = r.get("path")
+        require(
+            isinstance(path, list) and bool(path) and all(h in hosts for h in path),
+            "unknown path host",
+        )
+        require(len(set(path)) == len(path), "route path cycle")
+        require(r.get("exit_host") == path[-1], "exit_host must end the path")
+        require(
+            r.get("exit_country") in ("SG", "JP", "US"),
+            "automatic exits only support SG/JP/US; HK is transit only",
+        )
+        require(
+            isinstance(ipaddress.ip_address(r.get("expected_exit_ipv4")), ipaddress.IPv4Address),
+            "IPv4 exit required",
+        )
+    dns = c.get("dns", {})
+    require(
+        isinstance(dns, dict) and set(dns) <= {"bootstrap", "domestic", "remote"},
+        "invalid DNS config",
+    )
+    for field in ("bootstrap", "domestic", "remote"):
+        if field in dns:
+            require(
+                isinstance(dns[field], list)
+                and dns[field]
+                and all(isinstance(v, str) and v for v in dns[field]),
+                "invalid DNS server list",
+            )
+    company = c.get("company", {})
+    require(
+        isinstance(company, dict) and set(company) <= {"domains", "cidrs", "dns"},
+        "invalid company config",
+    )
+    for d in company.get("domains", []):
+        address(d)
+    for cidr in company.get("cidrs", []):
+        require(ipaddress.ip_network(cidr, strict=False).version == 4, "IPv4 company CIDR required")
+    if company.get("domains"):
+        require(
+            isinstance(company.get("dns"), list) and bool(company["dns"]), "company DNS required"
+        )
+    return c
+
+
+def fingerprint(c, r):
+    return digest(
+        encode(
+            {
+                "route": {k: v for k, v in r.items() if k != "acceptance"},
+                "hosts": c["hosts"],
+                "nodes": c["nodes"],
+            }
+        )
+    )
+
+
+def accepted(c, r, base):
+    """Require separate matching egress and completed stability receipts."""
+    try:
+        refs = r.get("acceptance", {})
+        d = read(Path(base) / refs["diagnosis"])
+        s = read(Path(base) / refs["stability"])
+        evidence = d["routes"][r["id"]]
+        cases = [v for k, v in s["cases"].items() if k.startswith(r["id"] + "/")]
+        return (
+            evidence["fingerprint"] == fingerprint(c, r)
+            and evidence["ok"] is True
+            and evidence["exit_ipv4"] == r["expected_exit_ipv4"]
+            and s.get("all_declared_passed") is True
+            and s.get("completed") is True
+            and s.get("elapsed_seconds", 0) >= 1800
+            and len(cases) >= 2
+            and all(v["checks"] >= 60 and v["failures"] == 0 for v in cases)
+        )
+    except (OSError, KeyError, ValueError, TypeError):
+        return False
+
+
+def report(c, base=".", previous=None):
+    validate(c)
+    dependencies = {}
+    for r in c["routes"]:
+        for h in r["path"]:
+            dependencies.setdefault(h, []).append(r["id"])
+    routes = [
+        {
+            "id": r["id"],
+            "protocol": c["nodes"][r["node"]]["type"],
+            "exit_country": r["exit_country"],
+            "path": r["path"],
+            "accepted": accepted(c, r, base),
+            "fingerprint": fingerprint(c, r),
+        }
+        for r in c["routes"]
+    ]
+    result = {
+        "routes": routes,
+        "shared_dependencies": {h: ids for h, ids in dependencies.items() if len(ids) > 1},
+        "redundancy_note": "Shared landing hosts provide entry-path redundancy, not independent server redundancy.",
+    }
+    if previous:
+        old = {r["id"]: r for r in previous.get("routes", [])}
+        now = {r["id"]: r for r in routes}
+        result["changes"] = {
+            "added": sorted(now.keys() - old.keys()),
+            "removed": sorted(old.keys() - now.keys()),
+            "changed": sorted(k for k in old.keys() & now.keys() if old[k] != now[k]),
+        }
+    return result
+
+
+def selected(c, base, candidates=False):
+    validate(c)
+    routes = [r for r in c["routes"] if candidates or accepted(c, r, base)]
+    require(bool(routes), "no accepted routes; use --include-candidates only for isolated tests")
+    return sorted(routes, key=lambda r: (("SG", "JP", "US").index(r["exit_country"]), r["id"]))
+
+
+def proxies(c, routes):
+    output = {}
+
+    def carrier(key):
+        alias = "_carrier-" + key
+        if alias not in output:
+            n = copy.deepcopy(c["nodes"][key])
+            n["name"] = alias
+            if n.get("dialer-proxy"):
+                n["dialer-proxy"] = carrier(n["dialer-proxy"])
+            output[alias] = n
+        return alias
+
+    names = []
+    for r in routes:
+        n = copy.deepcopy(c["nodes"][r["node"]])
+        n["name"] = r["exit_country"] + "-" + r["id"]
+        if n.get("dialer-proxy"):
+            n["dialer-proxy"] = carrier(n["dialer-proxy"])
+        output[n["name"]] = n
+        names.append(n["name"])
+    return list(output.values()), names

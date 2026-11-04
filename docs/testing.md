@@ -47,3 +47,19 @@ CI 不连接私人 VPS，不使用真实凭据，也不保证某个运营商网�
 - 汇总位于 `<输出路径>.summary.json`。`active_cases_passed` 表示实际执行用例的结果；有人工说明的 excluded 项时，`all_declared_passed` 仍为 false，命令返回非零。不能把排除坏路径后的结果称作全部通过。
 
 需要诊断失败时，同时保存独立测试核心的日志。仅凭 curl 的 SSL_ERROR_SYSCALL 不能确定目标网站 TLS 出错：代理节点建连被核心取消，也可能表现为这个错误。测速命令现在也保存错误原因与 TLS 阶段耗时，并强制使用指定代理。
+
+## 分段诊断及连接练习
+
+`vrk diagnose --catalog /private/catalog.json --cases /private/diagnosis.json --output /private/new-result.json`，参考 [诊断清单](../examples/diagnosis.json)。每条线路明确固定代理监听、只读 HTTPS 目标、返回实际源 IPv4 的受控 egress_url。分段检查由 local 或配置了 SSH 的 host 发起；缺少权限标记未测，不自动认定线路或项目故障。UDP 分段只支持受控 echo，不用“发送 UDP 未报错”判断端口可达。
+
+可在每条诊断用例增加 exercise：stream_url/stream_seconds（默认 30）、idle_url/idle_seconds（默认 30）、download_url/upload_url、udp（host/port/size，默认 1200）。必须使用受控目标：stream 持续响应，idle 返回 204 并保持 HTTP keep-alive；下载返回恰好 25 MB，上传允许恰好 8 MB；UDP 原样回显。上传是显式启用的测试行为，不向业务接口猜测发送请求。
+
+idle 与 UDP 需要 socks5h 监听；空闲测试要求复用同一 TLS 连接，不能以重新连接成功冒充长连接保持。并行传输、持续响应及 UDP 分别保留结果；诊断不记录正文、完整 URL 或代理凭据，结果权限 600，不覆盖旧文件。
+
+## 订阅交付验收
+
+分别检查 Clash 完整配置、OpenWrt 节点源与 V2Ray Base64 解码结果。用实际客户端版本验证协议，不把 URI 解析成功当作实际登录或 GUI 导入通过。V2Ray 核心与 v2rayN 客户端不是同一组件；Hysteria 需客户端提供对应核心，REALITY/XHTTP 也有版本要求。
+
+`python3 scripts/validate_delivery.py --mihomo /path/to/mihomo` 使用本机 HTTP/SOCKS 测试夹具和真实 Mihomo 核心，验证两条模拟新加坡线路均失效后切到日本、美国，全部失效拒绝，以及 provider 的 404、超时、空内容、无效内容、节点删除、缓存重启和无缓存首次启动。报告明确标为 simulation，不代表真实国家线路已验收。CI 固定下载并校验 Mihomo 1.19.32，不安装代理服务。
+
+真实 VPS 另验 HTTPS 证书、令牌撤销、发布回滚、静态服务重启、代理 PID 不变，以及 UDP/长连接和 30 分钟观察。生产 OpenWrt 本轮只核对配置，不做节点源切换；真实 OpenWrt 生产刷新与重启验收留待独立维护窗口，不能以独立 Mihomo 进程测试冒充。

@@ -68,8 +68,26 @@ vrk export --host root@exit-host --format mihomo --output .private/relay.json \
 
 多台 VPS 一起使用时，增加 `--name-prefix jp-`、`--name-prefix us-`，避免节点重名。nodes 格式会同时为凭据引用增加前缀，便于安全合并；该格式前缀应使用小写 ASCII 标识，客户端格式可使用中文名称。
 
-导出文件包含认证，权限 600。Mihomo XHTTP 导出固定 h2/stream-one，默认不启用额外复用；必须以实际使用的客户端版本验证。不安装订阅 HTTP 服务。
+导出文件包含认证，权限 600。Mihomo XHTTP 导出固定 h2/stream-one，默认不启用额外复用；必须以实际使用的客户端版本验证。此命令只导出文件；双格式 HTTPS 订阅通过独立的 subscription 命令生成和发布。
 
 端口映射的键始终使用原始监听 ID（例如 vision、xhttp、hy2），与展示名称前缀无关。导出后应验证真实出口，不能只做语法检查。
 
 如果节点需要通过既有客户端入口建立连接，可在 Mihomo 导出中使用 `--dialer-proxy '既有入口组名'`，生成原生字段，不修改服务端，也不创建或选择该组。必须在完整客户端配置中确认组名存在、没有环路，并验证最终出口；不要引用可能再次绕回故障入口的自动组。其他格式拒绝此参数，避免静默忽略。
+
+## 线路目录与订阅
+
+[线路目录示例](../examples/catalog.json) 与原服务器部署 JSON 分开。`hosts` 保存服务器地址和可选 `ssh` / `jump`；`nodes` 保存原生 Mihomo VLESS-REALITY 或 Hysteria 2 节点及认证，`routes` 引用节点，并声明唯一 id、依次经过的主机 path、exit_host、exit_country（SG/JP/US）与 expected_exit_ipv4。香港只能出现在中转路径。客户端中转通过节点的 dialer-proxy 引用另一节点 id，不接受未知引用或循环。
+
+`vrk catalog validate/plan --catalog ...` 输出不含认证的线路与共享依赖报告。`plan --previous /private/old-report.json` 比较增删和变化。多条路径共用同一落地机时只构成入口路径冗余。
+
+每条线路可用 `acceptance.diagnosis`、`acceptance.stability` 引用相对目录的私有结果。诊断须匹配线路指纹及预期出口；稳定性须完成至少 1800 秒、两个目标各 60 次且无失败。verify 中的代理名称须与线路 id 相同。配置变化使旧指纹失效；未通过线路默认不发布。
+
+`rules` 可覆盖随包固定的 domains / cidrs 锁，每项为 HTTPS url、sha256；空内容、哈希不符或下载失败拒绝构建，不更新旧发布。默认规则来源是固定提交的 MetaCubeX/meta-rules-dat CN 域名和 IPv4 网段，更新须审查锁文件后重新构建。
+
+可选 `dns.bootstrap/domestic/remote` 分别设置节点引导、国内与外网解析。可选 `company.domains/cidrs/dns` 设置私有公司规则；公司域名只使用显式公司 DNS、返回真实地址，不配置公共回退。公司规则优先于国内分类；公共模板不含真实公司域名。
+
+双格式构建包含 Clash 节点源和完整配置、V2Ray Base64 URI 列表。V2Ray 客户端独立管理策略，不从 URI 获得 Mihomo 的 DNS 或国家回退。分享链接沿用落地认证和 SNI；不支持表达的客户端链明确排除，并在不含认证的 manifest 中说明。若全部节点均为客户端链，构建拒绝，需提供可表达的独立直达或服务端中转线路。
+
+Mihomo 1.19.32 的 provider 内节点不能直接通过名称作为 dialer-proxy；工具使用原生全局中转策略组衔接。OpenWrt 首次合并 openwrt-example.json 中的固定组；中转组增删需要单独审查本地策略，不能只更新订阅后假定已配置。组内缺失或所有出口失败时使用 REJECT，不使用 DIRECT/COMPATIBLE 兜底。
+
+构建时 `--mihomo` 必填，使用指定核心做原生校验。完整配置监听回环 7890 和 DNS 1053，LAN/TUN 默认关闭；端口冲突由客户端环境处理，不自动修改系统配置。

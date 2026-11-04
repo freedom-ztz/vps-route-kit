@@ -10,6 +10,8 @@ import sys
 root = Path(__file__).resolve().parents[1]
 r = subprocess.run(["git", "ls-files", "-z"], cwd=root, capture_output=True, check=True)
 errors = []
+# Public resolver defaults are intentional configuration, not private VPS addresses.
+PUBLIC_DNS_IPV4 = {"223.5.5.5", "119.29.29.29", "1.1.1.1"}
 for name in r.stdout.decode().split("\0"):
     if not name:
         continue
@@ -53,7 +55,7 @@ for name in r.stdout.decode().split("\0"):
             ip = ipaddress.ip_address(candidate)
         except ValueError:
             continue
-        if ip.is_global:
+        if ip.is_global and candidate not in PUBLIC_DNS_IPV4:
             errors.append(name + ": routable IP address")
     if re.search(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b", text):
         errors.append(name + ": access key")

@@ -1,0 +1,28 @@
+{
+  "routes": {
+    "sg-direct": {
+      "proxy": "socks5h://127.0.0.1:10808",
+      "targets": [
+        {
+          "name": "controlled",
+          "url": "https://health.example.com/health",
+          "expect": 204
+        },
+        {
+          "name": "public",
+          "url": "https://www.gstatic.com/generate_204",
+          "expect": 204
+        }
+      ],
+      "egress_url": "https://health.example.com/egress",
+      "segments": [
+        {
+          "from": "local",
+          "to": "sg",
+          "port": 24443,
+          "transport": "tcp"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "domains": {
+    "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/bc735930f7942f1159094650f55012ff7e9644a0/geo/geosite/cn.list",
+    "sha256": "703c706f925afa756a404136ce2cbea856763969d241280ce55345519dc9332f"
+  },
+  "cidrs": {
+    "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/bc735930f7942f1159094650f55012ff7e9644a0/geo/geoip/cn.list",
+    "sha256": "cb55848a49716ad8869f7c7124fcdf804a83539a42d685a3a196b6619590ec0a"
+  }
+}

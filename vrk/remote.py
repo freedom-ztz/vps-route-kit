@@ -9,7 +9,7 @@ from .core import SOURCE
 from .util import Error
 
 
-def execute(host, argv, *, jump=None, config=None, secrets=None, lock=None):
+def execute(host, argv, *, jump=None, config=None, secrets=None, lock=None, extra_files=None):
     if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.@:-]*", host):
         raise Error("invalid SSH host")
     command = ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
@@ -37,6 +37,10 @@ def execute(host, argv, *, jump=None, config=None, secrets=None, lock=None):
         ]:
             if path:
                 t.add(path, arcname=name)
+        for name, path in (extra_files or {}).items():
+            if not re.fullmatch(r"[a-z][a-z0-9.-]*", name):
+                raise Error("invalid upload name")
+            t.add(path, arcname=name)
     try:
         p = subprocess.run(
             command + ["umask 077; mkdir " + temp + " && tar -xzf - -C " + temp],
@@ -46,7 +50,7 @@ def execute(host, argv, *, jump=None, config=None, secrets=None, lock=None):
         )
         if p.returncode:
             raise Error("SSH upload failed")
-        args = ["python3", temp + "/vrk.py", *argv]
+        args = ["python3", temp + "/vrk.py", *[x.replace("__VRK_UPLOAD__", temp) for x in argv]]
         if config:
             args += ["--config", temp + "/input.json"]
         if secrets:

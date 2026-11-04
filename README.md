@@ -12,6 +12,7 @@
 | 固定 TCP / UDP 中转 | Realm 转发到指定落地机，不终止代理认证和加密 |
 | 服务端分流 | 有序匹配精确域名、域名后缀、IP/CIDR，选择本机出口、指定远端节点或拒绝 |
 | 部署与恢复 | 差异预览、候选配置、原子切换、受影响服务重启、失败回滚、备份及显式版本升级 |
+| Clash / V2Ray 订阅 | Clash Meta/Mihomo 完整配置与节点源、V2Ray Base64 链接列表，使用标准 Nginx 静态 HTTPS 发布 |
 | 客户端导出 | Mihomo/Nikki file provider、VLESS/Hysteria URI、独立客户端配置、供其他 VPS 引用的节点 |
 | 诊断与验收 | 状态、脱敏日志、基础诊断、固定代理测速、保留首次失败的 JSONL 网络验收 |
 
@@ -162,6 +163,38 @@ vrk verify --cases "$HOME/.config/vps-route-kit/cases.json" \
 
 每条路径使用独立监听，测试期间不切换共享组。`verify` 不启动客户端、不自动检查出口国家、不以重试覆盖首次失败，排除项不会算作全量通过，结果文件不可覆盖。详细指标和测速方法见 [测试与排障](docs/testing.md)。
 
+## 订阅与 OpenWrt 接入
+
+订阅格式和接入方式分别选择：
+
+| 产物 | 内容 | 使用位置 |
+| --- | --- | --- |
+| `desktop.json` | Clash Meta/Mihomo 完整配置：节点、DNS、国内直连、国家回退 | 桌面客户端直接导入完整订阅 |
+| `nodes.json` | Clash Meta/Mihomo 节点集合 | OpenWrt 原生 HTTP proxy-provider；也可供已有客户端策略使用 |
+| `v2ray.txt` | Base64 编码的多行 VLESS/Hysteria 分享 URI | v2rayN 等兼容客户端；分流、DNS 和回退由客户端自身负责 |
+| `openwrt-example.json` | provider、策略组和必要的中转引用示例 | 审查后合并到 OpenWrt 本地配置，不是完整网关配置 |
+
+“Clash”指 Clash Meta/Mihomo；旧版 Clash 不支持所有协议。“V2Ray 订阅”指分享链接格式，不代表原始 V2Ray 核心支持 REALITY/XHTTP/Hysteria。客户端必须具备对应核心与协议支持，版本兼容性应实际验证。
+
+V2Ray 链接可以表达直达和 Realm 四层中转，不能表达客户端 `dialer-proxy` 链。构建时明确列出被排除的链式节点；若没有可表达的节点，则拒绝双格式构建，不发布空订阅。Clash 中的链式节点需要配套固定中转策略组，首次接入须合并示例；此后更新节点不改网关策略。
+
+线路目录独立于单机部署配置，见 [脱敏示例](examples/catalog.json)。每条线路声明入口路径、出口国家、预期出口和共享服务器依赖。正式构建要求匹配的诊断、出口和 30 分钟稳定性证据；测试候选须显式使用 `--include-candidates`，发布也须加 `--allow-candidates`。
+
+```sh
+vrk catalog plan --catalog /private/catalog.json
+vrk diagnose --catalog /private/catalog.json --cases /private/diagnosis.json --output /private/diagnosis-result.json
+vrk subscription build --catalog /private/catalog.json --output /private/release-1 \
+  --base-url https://sub.example.com:18443 --access-file /private/access.json --mihomo /path/to/mihomo
+vrk subscription publish --bundle /private/release-1 --publish-config /private/publish.json \
+  --access-file /private/access.json --host root@web-host
+```
+
+生成的私有令牌文件确定链接前缀：`https://源站/令牌/desktop.json`、`/nodes.json`、`/v2ray.txt`。工具不把完整链接打印到终端。静态站点使用现有 Nginx 二进制、独立配置和独立 systemd 单元，不运行订阅 API；不修改已有网站或代理服务。
+
+桌面完整配置更新会替换其中策略；长期修改应保存在私有生成配置。OpenWrt 只更新节点源，继续维护本地 DNS、公司直连和 DHCP。两种场景都需要首次能够访问订阅地址；节点源默认独立直连下载，受限网络可显式指定已有的独立管理入口，避免依赖尚未加载的节点组。
+
+字段、证据及链式节点见 [配置说明](docs/configuration.md)，发布和撤销令牌见 [部署恢复](docs/deployment.md)，兼容性及故障测试见 [测试说明](docs/testing.md)。
+
 ## 日常维护
 
 | 操作 | 命令 |
@@ -186,9 +219,9 @@ vrk verify --cases "$HOME/.config/vps-route-kit/cases.json" \
 
 ## 支持与验证范围
 
-第一版使用 IPv4、主机级路由，不提供多用户计费、Web 面板、公开订阅服务器、GeoIP 自动更新或服务端国家自动回退。指定远端失败不隐式直连。
+第一版使用 IPv4、主机级路由，不提供多用户计费、Web 面板、自建订阅 API、后台规则更新或服务端国家自动回退。指定远端失败不隐式直连。
 
-0.1.1 的 45 项单元测试在 Mac 和 Debian 实机通过；Debian 12 amd64 已验证三协议和中转的实际出口。Ubuntu 24.04、arm64 尚未完成真实机验收。已配置 GitHub Actions，不表示远端 CI 已运行。
+0.2.0 增加线路目录、双格式静态订阅和分段诊断；软件回归与真实线路可用性分别验收。Debian 12 amd64 已验证三协议和中转的实际出口。Ubuntu 24.04、arm64 尚未完成真实机验收。已配置 GitHub Actions，不表示远端 CI 已运行。
 
 测试网络仍有 UDP 回程不可达和间歇建连异常，整体稳定性门槛尚未通过；功能连接成功不等于生产可用。项目不承诺某个协议必然提速或无法识别。测试应分别记录 TCP/UDP、证书、实际出口、故障行为与稳定性，原始私有结果不随源码发布。
 
@@ -201,10 +234,12 @@ python3 -m unittest discover -s tests -v
 python3 scripts/check_public.py
 # Linux：下载固定官方核心并校验生成配置
 python3 scripts/validate_cores.py
+# 显式指定 Mihomo 1.19.32，运行受控模拟，不连接私人 VPS
+python3 scripts/validate_delivery.py --mihomo /path/to/mihomo
 git diff --check
 ```
 
-源码：`vrk/cli.py` 为命令入口，`config.py` 校验配置，`render.py` 生成核心配置，`deploy.py` 管理部署事务，`remote.py` 管理 SSH，`export.py` 导出节点，`verification.py` / `diagnostics.py` 执行验收与诊断。测试在 `tests/`，脱敏配置在 `examples/`。
+源码：`vrk/cli.py` 为命令入口，`config.py` 校验配置，`render.py` 生成核心配置，`deploy.py` 管理部署事务，`remote.py` 管理 SSH，`export.py` 导出节点，`verification.py` / `diagnostics.py` 执行验收与诊断，`catalog.py` / `subscription.py` / `publishing.py` 管理线路及订阅交付。测试在 `tests/`，脱敏配置在 `examples/`。
 
 提交 Issue 或 PR 时提供脱敏后的环境、步骤、预期和结果；行为修改附相关回归测试。不要提交真实 IP/域名、凭据、证书、节点导出、备份或业务日志。发布前审查暂存差异，自动检查无法识别所有隐私。
 
@@ -217,3 +252,4 @@ git diff --check
 - [Hysteria](https://github.com/HyNetworks/hysteria)、[服务端配置](https://v2.hysteria.network/docs/advanced/Full-Server-Config/)。
 - [Realm](https://github.com/zhboner/realm)：固定四层转发。
 - [Mihomo](https://wiki.metacubex.one/config/proxies/transport/)：客户端导出接口。
+- [v2rayN 订阅说明](https://github.com/2dust/v2rayN/wiki/Description-of-subscription)：标准分享链接及订阅格式。

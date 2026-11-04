@@ -1,0 +1,11 @@
+{
+  "root": "/var/lib/vrk-subscriptions",
+  "domain": "sub.example.com",
+  "base_url": "https://sub.example.com:18443",
+  "listen": "0.0.0.0",
+  "port": 18443,
+  "certificate": "/etc/my-certs/fullchain.pem",
+  "key": "/etc/my-certs/privkey.pem",
+  "user": "www-data",
+  "nginx": "/usr/sbin/nginx"
+}
