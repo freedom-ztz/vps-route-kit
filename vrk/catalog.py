@@ -176,6 +176,14 @@ def accepted(c, r, base):
         evidence = d["routes"][r["id"]]
         cases = [v for k, v in s["cases"].items() if k.startswith(r["id"] + "/")]
         bound = evidence.get("binding", {})
+        exercises = evidence.get("exercises", {})
+        required = {"stream", "idle", "download", "upload"}
+        if c["nodes"][r["node"]].get("udp", True):
+            required.add("udp")
+        if not isinstance(exercises, dict) or not all(
+            isinstance(exercises.get(k), dict) and exercises[k].get("ok") is True for k in required
+        ):
+            return False
         return (
             d.get("completed") is True
             and bool(bound.get("batch_id"))

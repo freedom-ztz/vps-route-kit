@@ -47,6 +47,9 @@ class ReliabilityTests(unittest.TestCase):
                 "routes": {
                     "test": {
                         "binding": binding,
+                        "exercises": {
+                            k: {"ok": True} for k in ("stream", "idle", "download", "upload", "udp")
+                        },
                         "fingerprint": catalog.fingerprint(c, r),
                         "ok": True,
                         "exit_ipv4": r["expected_exit_ipv4"],
@@ -67,6 +70,10 @@ class ReliabilityTests(unittest.TestCase):
             atomic(Path(d) / "d.json", diagnosis)
             atomic(Path(d) / "s.json", stability)
             self.assertTrue(catalog.accepted(c, r, d))
+            diagnosis["routes"]["test"]["exercises"].pop("download")
+            atomic(Path(d) / "d.json", diagnosis)
+            self.assertFalse(catalog.accepted(c, r, d))
+            diagnosis["routes"]["test"]["exercises"]["download"] = {"ok": True}
             diagnosis["completed"] = False
             atomic(Path(d) / "d.json", diagnosis)
             self.assertFalse(catalog.accepted(c, r, d))

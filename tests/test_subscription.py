@@ -99,6 +99,10 @@ class CatalogTests(unittest.TestCase):
                         "test": {
                             "binding": catalog.binding(c, r, [], "batch", {"mihomo": "1.19.32"}),
                             "ok": True,
+                            "exercises": {
+                                k: {"ok": True}
+                                for k in ("stream", "idle", "download", "upload", "udp")
+                            },
                             "fingerprint": catalog.fingerprint(c, r),
                             "exit_ipv4": r["expected_exit_ipv4"],
                         }

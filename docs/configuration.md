@@ -80,7 +80,7 @@ vrk export --host root@exit-host --format mihomo --output .private/relay.json \
 
 `vrk catalog validate/plan --catalog ...` 输出不含认证的线路与共享依赖报告。`plan --previous /private/old-report.json` 比较增删和变化。多条路径共用同一落地机时只构成入口路径冗余。
 
-每条线路可用 `acceptance.diagnosis`、`acceptance.stability` 引用相对目录的私有结果。诊断须匹配线路指纹及预期出口；稳定性须完成至少 1800 秒、两个目标各 60 次且无失败。verify 中的代理名称须与线路 id 相同。仅线路及实际依赖变化使旧指纹失效；无关节点变化不要求重测。旧版未绑定证据不能用于正式发布。单条失败不会使同批其他合格线路失效。
+每条线路可用 `acceptance.diagnosis`、`acceptance.stability` 引用相对目录的私有结果。诊断须匹配线路指纹及预期出口，并通过长连接、空闲恢复、双向传输与适用的 UDP 练习；稳定性须完成至少 1800 秒、两个目标各 60 次且无失败。verify 中的代理名称须与线路 id 相同。仅线路及实际依赖变化使旧指纹失效；无关节点变化不要求重测。旧版未绑定证据不能用于正式发布。单条失败不会使同批其他合格线路失效。
 
 `rules` 可覆盖随包固定的 domains / cidrs 锁，每项为 HTTPS url、sha256；空内容、哈希不符或下载失败拒绝构建，不更新旧发布。默认规则来源是固定提交的 MetaCubeX/meta-rules-dat CN 域名和 IPv4 网段，更新须审查锁文件后重新构建。
 
