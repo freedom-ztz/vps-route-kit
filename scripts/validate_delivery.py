@@ -239,6 +239,7 @@ try:
         time.sleep(2)
         code, body = request()
         assert code != 0
+        assert json.loads(api("/proxies/auto")[1])["now"] == "REJECT"
         result["all_failed_rejected"] = True
         mode.update(body=json.dumps({"proxies": [nodes[-1]]}).encode())
         assert api("/providers/proxies/vrk", "PUT")[0] == 204
@@ -253,6 +254,7 @@ try:
         p = start(empty)
         code, body = request()
         assert code != 0 and not names()
+        assert json.loads(api("/proxies/auto")[1])["now"] == "REJECT"
         result["empty_first_start_rejected"] = True
 finally:
     if p and p.poll() is None:

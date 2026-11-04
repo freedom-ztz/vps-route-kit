@@ -88,6 +88,6 @@ vrk export --host root@exit-host --format mihomo --output .private/relay.json \
 
 双格式构建包含 Clash 节点源和完整配置、V2Ray Base64 URI 列表。V2Ray 客户端独立管理策略，不从 URI 获得 Mihomo 的 DNS 或国家回退。分享链接沿用落地认证和 SNI；不支持表达的客户端链明确排除，并在不含认证的 manifest 中说明。若全部节点均为客户端链，构建拒绝，需提供可表达的独立直达或服务端中转线路。
 
-Mihomo 1.19.32 的 provider 内节点不能直接通过名称作为 dialer-proxy；工具使用原生全局中转策略组衔接。OpenWrt 首次合并 openwrt-example.json 中的固定组；中转组增删需要单独审查本地策略，不能只更新订阅后假定已配置。组内缺失或所有出口失败时使用 REJECT，不使用 DIRECT/COMPATIBLE 兜底。
+Mihomo 1.19.32 的 provider 内节点不能直接通过名称作为 dialer-proxy；工具使用原生全局中转策略组衔接。OpenWrt 首次合并 openwrt-example.json 中的固定组；示例中的普通策略组应复用本地既有组，不直接覆盖同名对象或重命名生产组；中转组增删需要单独审查本地策略，不能只更新订阅后假定已配置。组内缺失或所有出口失败时使用 REJECT，不使用 DIRECT/COMPATIBLE 兜底。
 
 构建时 `--mihomo` 必填，使用指定核心做原生校验。完整配置监听回环 7890 和 DNS 1053，LAN/TUN 默认关闭；端口冲突由客户端环境处理，不自动修改系统配置。
