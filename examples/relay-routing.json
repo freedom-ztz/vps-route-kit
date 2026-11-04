@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "address": "203.0.113.10",
+  "listeners": [
+    {
+      "id": "vision",
+      "protocol": "vision",
+      "listen": "0.0.0.0",
+      "port": 24443,
+      "secret": "primary",
+      "server_name": "www.example.com",
+      "target": "www.example.com"
+    }
+  ],
+  "nodes": {
+    "remote": {
+      "protocol": "vision",
+      "address": "192.0.2.20",
+      "port": 24443,
+      "secret": "remote",
+      "server_name": "www.example.com",
+      "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "short_id": "abcd"
+    }
+  },
+  "routing": {
+    "default": "local",
+    "rules": [
+      {
+        "suffix": [
+          "example.net"
+        ],
+        "action": "node:remote"
+      },
+      {
+        "cidr": [
+          "198.51.100.0/24"
+        ],
+        "action": "reject"
+      }
+    ]
+  },
+  "relays": [
+    {
+      "id": "example-forward",
+      "port": 26443,
+      "remote": "192.0.2.20",
+      "remote_port": 24443,
+      "transports": [
+        "tcp",
+        "udp"
+      ]
+    }
+  ]
+}

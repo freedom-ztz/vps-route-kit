@@ -1,0 +1,43 @@
+{
+  "address": "203.0.113.10",
+  "listeners": [
+    {
+      "id": "vision",
+      "listen": "0.0.0.0",
+      "port": 24443,
+      "protocol": "vision",
+      "secret": "primary",
+      "server_name": "www.example.com",
+      "target": "www.example.com"
+    },
+    {
+      "id": "xhttp",
+      "listen": "0.0.0.0",
+      "path": "/vrk",
+      "port": 25443,
+      "protocol": "xhttp",
+      "secret": "primary",
+      "server_name": "www.example.com",
+      "target": "www.example.com"
+    },
+    {
+      "certificate": {
+        "email": "admin@example.com",
+        "mode": "acme"
+      },
+      "id": "hy2",
+      "listen": "0.0.0.0",
+      "port": 24443,
+      "protocol": "hysteria2",
+      "secret": "hy2",
+      "server_name": "hy2.example.com"
+    }
+  ],
+  "nodes": {},
+  "relays": [],
+  "routing": {
+    "default": "local",
+    "rules": []
+  },
+  "schema_version": 1
+}

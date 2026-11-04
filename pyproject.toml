@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vps-route-kit"
+version = "0.1.1"
+description = "Explicit systemd deployment for REALITY, XHTTP, Hysteria 2 and relays"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/freedom-ztz/vps-route-kit"
+Issues = "https://github.com/freedom-ztz/vps-route-kit/issues"
+
+[project.scripts]
+vrk = "vrk.cli:main"
+
+[tool.setuptools]
+packages = ["vrk"]
+
+[tool.setuptools.package-data]
+vrk = ["versions.lock.json"]
+
+[project.optional-dependencies]
+dev = ["black==25.1.0"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]

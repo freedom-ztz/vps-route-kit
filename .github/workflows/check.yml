@@ -1,0 +1,18 @@
+name: check
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install '.[dev]'
+      - run: black --check vrk tests scripts vrk.py
+      - run: python -m unittest discover -s tests -v
+      - run: python scripts/check_public.py
+      - run: python scripts/validate_cores.py
+      - run: git diff --check

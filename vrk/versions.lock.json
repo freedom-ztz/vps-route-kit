@@ -1,0 +1,41 @@
+{
+  "xray": {
+    "version": "26.5.9",
+    "assets": {
+      "amd64": {
+        "url": "https://github.com/XTLS/Xray-core/releases/download/v26.5.9/Xray-linux-64.zip",
+        "sha256": "f56c106b7c0159ad386bccd340faa5bbf55fd5c15821ec9e63e6a6ba11d3d1c7"
+      },
+      "arm64": {
+        "url": "https://github.com/XTLS/Xray-core/releases/download/v26.5.9/Xray-linux-arm64-v8a.zip",
+        "sha256": "7bc1da606e26e4ac2d7831181745bb3bcf4dca0fd7825f41388ae032e1247d15"
+      }
+    }
+  },
+  "hysteria": {
+    "version": "2.13.0",
+    "assets": {
+      "amd64": {
+        "url": "https://github.com/HyNetworks/hysteria/releases/download/app/v2.13.0/hysteria-linux-amd64",
+        "sha256": "907ba8c9693edb104b20582681fb7dc15639d5b64a9cbb616a7b539190a86691"
+      },
+      "arm64": {
+        "url": "https://github.com/HyNetworks/hysteria/releases/download/app/v2.13.0/hysteria-linux-arm64",
+        "sha256": "a68a61a84452ca250ce0368202521965ca9cc9d801a404f1dc9008ac6cf677a7"
+      }
+    }
+  },
+  "realm": {
+    "version": "2.9.6",
+    "assets": {
+      "amd64": {
+        "url": "https://github.com/zhboner/realm/releases/download/v2.9.6/realm-x86_64-unknown-linux-musl.tar.gz",
+        "sha256": "b1cc335547bea8bb2a88178bef12ec7f2363e36200e7ea1d4e1e67627929bf65"
+      },
+      "arm64": {
+        "url": "https://github.com/zhboner/realm/releases/download/v2.9.6/realm-aarch64-unknown-linux-musl.tar.gz",
+        "sha256": "f4c0318dd86854da483dcb7645b4f39cae2cc3f91c688fef969d53220b949488"
+      }
+    }
+  }
+}

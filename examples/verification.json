@@ -1,0 +1,23 @@
+{
+  "proxies": {
+    "manual-test": "socks5h://127.0.0.1:10808"
+  },
+  "targets": [
+    {
+      "name": "controlled",
+      "url": "https://health.example.com/health",
+      "expect": 204
+    },
+    {
+      "name": "public",
+      "url": "https://www.gstatic.com/generate_204",
+      "expect": 204
+    }
+  ],
+  "rounds": 60,
+  "interval": 30,
+  "workers": 4,
+  "connect_timeout": 8,
+  "timeout": 12,
+  "excluded": {}
+}
