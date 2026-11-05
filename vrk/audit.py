@@ -32,6 +32,8 @@ def tcp_entry(node):
 def attribution(entry, normal, pinned, configuration):
     if configuration.get("matches") is False:
         return "configuration_mismatch"
+    if entry["status"] == "failed" and (normal["ok"] or pinned["ok"]):
+        return "entry_probe_and_proxy_disagree_requires_path_and_timing_evidence"
     if entry["status"] == "failed":
         return "transport_before_proxy_authentication"
     if normal["ok"] and pinned["ok"]:
@@ -98,7 +100,15 @@ def audit(c, cases, output):
         if not spec["pinned_target"].get("connect_ip"):
             raise Error("audit requires a pinned comparison with TLS verification")
     for route in c["routes"]:
-        udp = cases["routes"][route["id"]]["exercise"].get("udp", {})
+        exercise = cases["routes"][route["id"]]["exercise"]
+        required = {"stream_url", "idle_url", "download_url", "upload_url"}
+        if c["nodes"][route["node"]].get("udp", True):
+            required.add("udp")
+        if not isinstance(exercise, dict) or not required <= exercise.keys():
+            raise Error("audit requires all declared session capabilities before testing")
+        udp = exercise.get("udp", {})
+        if not isinstance(udp, dict):
+            raise Error("audit UDP exercise must be an object")
         if udp.get("host") == c["hosts"][route["exit_host"]]["address"]:
             raise Error("UDP capability requires an independent target, not host reflection")
     output = Path(output)

@@ -23,7 +23,13 @@ class AuditTests(unittest.TestCase):
             "proxy": "socks5h://127.0.0.1:10808",
             "pinned_target": {**targets[0], "connect_ip": "192.0.2.30"},
             "egress_url": "https://example.com/egress",
-            "exercise": {},
+            "exercise": {
+                "stream_url": "https://example.com/stream",
+                "idle_url": "https://example.com/health",
+                "download_url": "https://example.com/down",
+                "upload_url": "https://example.com/up",
+                "udp": {"host": "192.0.2.30", "port": 18445},
+            },
             "benchmark": {
                 "down_url": "https://example.com/down",
                 "up_url": "https://example.com/up",
@@ -103,3 +109,29 @@ class AuditTests(unittest.TestCase):
             attribution({"status": "passed"}, {"ok": False}, {"ok": True}, {"matches": True}),
             "resolution_related_candidate_requires_server_dns_evidence",
         )
+
+    def test_session_coverage_is_required_before_any_network_probe(self):
+        for omitted in ("idle_url", "stream_url", "udp", "udp-null"):
+            with self.subTest(omitted=omitted), tempfile.TemporaryDirectory() as folder:
+                c, spec = self.setup_case(folder)
+                if omitted == "udp-null":
+                    spec["routes"]["test"]["exercise"]["udp"] = None
+                else:
+                    del spec["routes"]["test"]["exercise"][omitted]
+                with patch("vrk.audit.tcp_entry", side_effect=AssertionError("network I/O")):
+                    with self.assertRaises(Error):
+                        audit(c, spec, Path(folder) / "output")
+                self.assertFalse((Path(folder) / "output").exists())
+
+    def test_proxy_success_requires_investigation_of_a_failed_direct_entry_probe(self):
+        for normal, pinned in [(True, True), (False, True), (True, False)]:
+            with self.subTest(normal=normal, pinned=pinned):
+                self.assertEqual(
+                    attribution(
+                        {"status": "failed"},
+                        {"ok": normal},
+                        {"ok": pinned},
+                        {"matches": True},
+                    ),
+                    "entry_probe_and_proxy_disagree_requires_path_and_timing_evidence",
+                )
