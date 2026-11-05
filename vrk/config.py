@@ -57,6 +57,7 @@ def validate(c):
                 "routing",
                 "relays",
                 "manage_firewall",
+                "service_dns",
                 "_bindings",
             }
         ),
@@ -65,6 +66,27 @@ def validate(c):
     require(c.get("schema_version") == 1, "schema_version must be 1")
     address(c.get("address"))
     require(type(c.get("manage_firewall", False)) is bool, "manage_firewall must be boolean")
+    dns = c.get("service_dns", {})
+    require(
+        isinstance(dns, dict) and set(dns) <= {"xray", "hysteria", "realm"}, "invalid service_dns"
+    )
+    for servers in dns.values():
+        require(
+            isinstance(servers, list)
+            and 1 <= len(servers) <= 3
+            and all(isinstance(v, str) for v in servers)
+            and len(set(servers)) == len(servers),
+            "service_dns requires one to three distinct IPv4 DNS addresses",
+        )
+        for server in servers:
+            try:
+                ip = ipaddress.IPv4Address(server)
+            except ipaddress.AddressValueError:
+                raise Error("service_dns requires IPv4 addresses, without ports") from None
+            require(
+                not ip.is_unspecified and not ip.is_multicast and str(ip) != "255.255.255.255",
+                "invalid service DNS address",
+            )
     nodes = c.get("nodes", {})
     require(isinstance(nodes, dict), "nodes must be an object")
     for key, n in nodes.items():

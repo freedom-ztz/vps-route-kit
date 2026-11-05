@@ -35,6 +35,8 @@ def bridge_required(c):
 
 def render(c, s, root="/var/lib/vrk"):
     files = {}
+    for component, servers in c.get("service_dns", {}).items():
+        files[f"resolv-{component}.conf"] = "".join(f"nameserver {server}\n" for server in servers)
     services = {}
     bindings = []
     referenced = sorted(referenced_nodes(c))

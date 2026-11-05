@@ -123,12 +123,16 @@ def preflight(c, old):
                     raise Error("certificate must be readable by vrk service user")
 
 
-def unit(component, binary_path, args, dependencies=()):
+def unit(component, binary_path, args, dependencies=(), *, resolver_file=None):
     command = " ".join(
         '"' + str(a).replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%") + '"'
         for a in [binary_path, *args]
     )
     dep = " ".join(n + ".service" for n in dependencies)
+    resolver = ""
+    if resolver_file:
+        source = str(resolver_file).replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%")
+        resolver = f'BindReadOnlyPaths="{source}:/etc/resolv.conf"\n'
     return f"""# Managed by VPS Route Kit
 [Unit]
 Description=VPS Route Kit {component}
@@ -137,7 +141,7 @@ Wants=network-online.target
 [Service]
 User=vrk
 Group=vrk
-ExecStart={command}
+{resolver}ExecStart={command}
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
@@ -252,6 +256,15 @@ def unit_runtime(content):
     )
 
 
+def service_files(c, component, command):
+    names = [Path(a).name for a in command if str(a).startswith(str(ROOT / "current") + "/")]
+    if component == "hysteria" and "server" in command:
+        names.append("www/index.html")
+    if component in c.get("service_dns", {}):
+        names.append(f"resolv-{component}.conf")
+    return names
+
+
 def impact(c, old, lock):
     """Conservative service impact without generating keys or downloading cores."""
     previous = old.get("config", {})
@@ -271,9 +284,7 @@ def impact(c, old, lock):
         files, args = render(cfg, secrets, str(ROOT))
         result = {}
         for n, (component, command) in args.items():
-            names = [
-                Path(a).name for a in command if str(a).startswith(str(ROOT / "current") + "/")
-            ]
+            names = service_files(cfg, component, command)
             result[n] = (component, [files.get(f) for f in names])
         if cfg.get("manage_firewall"):
             from .firewall import rules
@@ -389,6 +400,11 @@ def apply(c, secrets_file=None, lock_file=None, verify_cases=None, verify_output
                         else []
                     )
                 ),
+                resolver_file=(
+                    ROOT / "current" / f"resolv-{comp}.conf"
+                    if comp in c.get("service_dns", {})
+                    else None
+                ),
             )
             for n, (comp, args) in service_args.items()
         }
@@ -482,15 +498,9 @@ def apply(c, secrets_file=None, lock_file=None, verify_cases=None, verify_output
             changed = set(services) - set(old["services"])
             for n in set(services) & set(old["services"]):
                 comp, args = service_args.get(n, ("nft", []))
-                relevant = [
-                    Path(arg).name
-                    for arg in args
-                    if str(arg).startswith(str(ROOT / "current") + "/")
-                ]
+                relevant = service_files(c, comp, args)
                 if n == "vrk-firewall":
                     relevant = ["firewall.nft"]
-                if comp == "hysteria" and "server" in args:
-                    relevant += ["www/index.html"]
                 old_dir = ROOT / "generations" / str(old.get("generation"))
                 if unit_runtime(services[n]) != unit_runtime(old["services"][n]) or any(
                     not (old_dir / f).exists() or (old_dir / f).read_text() != files.get(f, "")
