@@ -64,7 +64,7 @@ DNS 对照在正常域名请求之外使用 `connect_ip`：通过 curl `--connec
 
 可在每条诊断用例增加 exercise：stream_url/stream_seconds（默认 30）、idle_url/idle_seconds（默认 30）、download_url/upload_url、udp（host/port/size，默认 1200）。必须使用受控目标：stream 持续响应，idle 返回 204 并保持 HTTP keep-alive；下载返回恰好 25 MB，上传允许恰好 8 MB；UDP 原样回显。上传是显式启用的测试行为，不向业务接口猜测发送请求。
 
-idle 与 UDP 需要 socks5h 监听；空闲测试要求复用同一 TLS 连接，不能以重新连接成功冒充长连接保持。并行传输、持续响应及 UDP 分别保留结果；诊断不记录正文、完整 URL 或代理凭据，结果权限 600，不覆盖旧文件。
+idle 与 UDP 需要 socks5h 监听；空闲测试要求复用同一 TLS 连接，不能以重新连接成功冒充长连接保持。并行传输、持续响应及 UDP 分别保留结果；诊断不记录正文、完整 URL 或代理凭据，结果权限 600，不覆盖旧文件。出口 IP 请求另存 `egress_probe`，保留首次 curl 退出码、错误、HTTP/TLS 耗时和本地端口；解析不到地址时仍保留失败证据，响应正文不落盘。
 
 ## 订阅交付验收
 

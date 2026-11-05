@@ -71,6 +71,9 @@ def audit(c, cases, output):
                 "exercise.py",
                 "verification.py",
                 "diagnostics.py",
+                "route_diagnostics.py",
+                "catalog.py",
+                "util.py",
             ]
         )
     ).hexdigest()

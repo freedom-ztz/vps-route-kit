@@ -9,7 +9,7 @@ import time
 import urllib.parse
 from . import catalog
 from .util import Error, atomic, run
-from .verification import probe, validate_cases
+from .verification import TIMINGS, probe, validate_cases
 
 
 def segment(c, spec):
@@ -58,6 +58,8 @@ def egress(proxy, url):
     u = urllib.parse.urlsplit(url)
     if u.scheme != "https" or not u.hostname or u.username or u.password:
         raise Error("egress endpoint must be explicit credential-free HTTPS")
+    started = time.time()
+    receipt = {"started": started, "ip": None, "ok": False, "meta": {}}
     try:
         p = run(
             [
@@ -74,21 +76,41 @@ def egress(proxy, url):
                 "--max-filesize",
                 "65536",
                 "--fail",
+                "--write-out",
+                "\n%{json}",
                 url,
             ],
             check=False,
             timeout=20,
         )
-        if p.returncode:
-            return None
+        body, separator, raw_meta = p.stdout.rpartition("\n")
         try:
-            data = json.loads(p.stdout)
+            meta = json.loads(raw_meta) if separator else {}
+        except ValueError:
+            meta = {}
+        receipt.update(
+            exit=p.returncode,
+            error=p.stderr.replace(url, "<egress-url>")[:1024],
+            meta={k: meta.get(k) for k in TIMINGS},
+        )
+        if p.returncode or not 200 <= meta.get("http_code", 0) < 300:
+            receipt["failure"] = "curl_or_http"
+            return receipt
+        try:
+            data = json.loads(body)
             value = data.get("ip", data.get("origin")) if isinstance(data, dict) else data
         except ValueError:
-            value = p.stdout.strip()
-        return str(ipaddress.IPv4Address(value))
-    except (ValueError, Error, OSError, TypeError):
-        return None
+            value = body.strip()
+        try:
+            receipt.update(ip=str(ipaddress.IPv4Address(value)), ok=True)
+        except (ValueError, TypeError):
+            receipt["failure"] = "invalid_egress_ipv4"
+        return receipt
+    except (Error, OSError) as error:
+        receipt.update(failure="probe_tool", error_type=type(error).__name__)
+        return receipt
+    finally:
+        receipt["ended"] = time.time()
 
 
 def diagnose(c, cases, output):
@@ -115,7 +137,8 @@ def diagnose(c, cases, output):
                 raise Error("unknown diagnosis field")
             validate_cases({"proxies": {key: spec["proxy"]}, "targets": spec["targets"]})
             records = [probe(key, spec["proxy"], target, 8, 15) for target in spec["targets"]]
-            actual = egress(spec["proxy"], spec["egress_url"])
+            egress_receipt = egress(spec["proxy"], spec["egress_url"])
+            actual = egress_receipt["ip"]
             segments = [segment(c, s) for s in spec.get("segments", [])]
             from .exercise import exercise
 
@@ -136,8 +159,10 @@ def diagnose(c, cases, output):
                 "checks": records,
                 "exercises": exercises,
                 "exit_ipv4": actual,
+                "egress_probe": egress_receipt,
                 "segments": segments,
                 "ok": all(x["ok"] for x in records)
+                and egress_receipt["ok"] is True
                 and actual == routes[key]["expected_exit_ipv4"]
                 and all(x["status"] == "passed" for x in segments)
                 and all(x["ok"] for x in exercises.values()),
