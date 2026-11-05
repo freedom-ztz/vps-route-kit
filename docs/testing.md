@@ -13,6 +13,8 @@
 
 ## 性能测试
 
+先记录测试端到本地网关的丢包与时延；无线抖动明显时，用同网段有线客户端作对照，并分别记录接口、平台与核心构建。不要把终端环境差异直接归因 VPS，也不能以 Linux 客户端通过代替 Mac 客户端通过。
+
 测速端点由使用者明确指定，不内置付费服务。以下 URL 是公开 Cloudflare 测速端点示例：
 
 ```sh
@@ -70,7 +72,7 @@ idle 与 UDP 需要 socks5h 监听；空闲测试要求复用同一 TLS 连接�
 
 分别检查 Clash 完整配置、OpenWrt 节点源与 V2Ray Base64 解码结果。用实际客户端版本验证协议，不把 URI 解析成功当作实际登录或 GUI 导入通过。V2Ray 核心与 v2rayN 客户端不是同一组件；Hysteria 需客户端提供对应核心，REALITY/XHTTP 也有版本要求。
 
-`python3 scripts/validate_delivery.py --mihomo /path/to/mihomo` 使用本机 HTTP/SOCKS 测试夹具和真实 Mihomo 核心，验证两条模拟新加坡线路均失效后切到日本、美国，全部失效拒绝，以及 provider 的 404、超时、空内容、无效内容、节点删除、缓存重启和无缓存首次启动。报告明确标为 simulation，不代表真实国家线路已验收。CI 固定下载并校验 Mihomo 1.19.32，不安装代理服务。
+`python3 scripts/validate_delivery.py --mihomo /path/to/mihomo` 使用本机 HTTP/SOCKS 测试夹具和真实 Mihomo 核心，验证两条模拟新加坡线路均失效后切到日本、美国，全部失效拒绝，以及 provider 的 404、超时、空内容、无效内容、节点删除、缓存重启和无缓存首次启动。报告明确标为 simulation，不代表真实国家线路已验收。CI 固定下载并校验 Mihomo 1.19.32 的 Linux amd64 兼容构建，适用于未暴露 x86-64-v3 指令集的虚拟机；不安装代理服务。
 
 真实 VPS 另验 HTTPS 证书、令牌撤销、发布回滚、静态服务重启、代理 PID 不变，以及 UDP/长连接和 30 分钟观察。生产 OpenWrt 本轮只核对配置，不做节点源切换；真实 OpenWrt 生产刷新与重启验收留待独立维护窗口，不能以独立 Mihomo 进程测试冒充。
 

@@ -6,10 +6,8 @@ import hashlib
 from pathlib import Path
 import urllib.request
 
-URL = (
-    "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.32/mihomo-linux-amd64-v1.19.32.gz"
-)
-SHA256 = "8451100836c9eda194331c2babfad490b2faf30cebc1a04b0e76fd8ac2d35d10"
+URL = "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.32/mihomo-linux-amd64-compatible-v1.19.32.gz"
+SHA256 = "ba3ce607747a07f948fc35780e108a4a7c7f552a38b9bd4d115f313ebcb89c20"
 p = argparse.ArgumentParser()
 p.add_argument("--output", required=True)
 a = p.parse_args()
@@ -23,4 +21,4 @@ if out.exists():
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_bytes(gzip.decompress(data))
 out.chmod(0o700)
-print("Pinned Mihomo 1.19.32 test core ready")
+print("Pinned Mihomo 1.19.32 compatible test core ready")
