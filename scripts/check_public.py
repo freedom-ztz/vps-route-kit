@@ -55,7 +55,7 @@ for name in r.stdout.decode().split("\0"):
             ip = ipaddress.ip_address(candidate)
         except ValueError:
             continue
-        if ip.is_global and candidate not in PUBLIC_DNS_IPV4:
+        if ip.is_global and not ip.is_multicast and candidate not in PUBLIC_DNS_IPV4:
             errors.append(name + ": routable IP address")
     if re.search(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b", text):
         errors.append(name + ": access key")
