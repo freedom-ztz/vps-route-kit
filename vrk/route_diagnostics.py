@@ -12,6 +12,32 @@ from .util import Error, atomic, run
 from .verification import TIMINGS, probe, validate_cases
 
 
+def clock_evidence(sent, received, elapsed, remote):
+    """Bound remote-minus-local clock offset without assuming symmetric SSH latency."""
+    first, last, probe_seconds = (
+        remote["started"],
+        remote["ended"],
+        remote["probe_seconds"],
+    )
+    lower, upper = last - received, first - sent
+    comparable = (
+        0 <= probe_seconds <= elapsed + 0.5
+        and abs(received - sent - elapsed) <= 0.5
+        and abs(last - first - probe_seconds) <= 0.5
+        and lower <= upper
+    )
+    return {
+        "local_sent": sent,
+        "local_received": received,
+        "remote_started": first,
+        "remote_ended": last,
+        "comparable": comparable,
+        "offset_seconds_min": lower if comparable else None,
+        "offset_seconds_max": upper if comparable else None,
+        "method": "remote-minus-local bounds; no symmetric-latency assumption",
+    }
+
+
 def segment(c, spec):
     if set(spec) != {"from", "to", "port", "transport"} or spec["to"] not in c["hosts"]:
         raise Error("invalid segment")
@@ -20,15 +46,27 @@ def segment(c, spec):
         raise Error("UDP segment checks require a controlled echo endpoint, not a UDP port scan")
     if spec["from"] != "local" and spec["from"] not in c["hosts"]:
         raise Error("unknown segment origin")
-    code = (
-        "import socket,secrets; "
-        "s=socket.socket(socket.AF_INET,socket.SOCK_STREAM if %r=='tcp' else socket.SOCK_DGRAM); "
-        "s.settimeout(8); s.connect((%r,%r)); "
-        % (spec["transport"], c["hosts"][spec["to"]]["address"], spec["port"])
+    code = """import socket,secrets,time,json
+result={'started':time.time(),'ok':False}; started=time.monotonic(); s=None
+try:
+ s=socket.socket(socket.AF_INET,socket.SOCK_STREAM if %r=='tcp' else socket.SOCK_DGRAM)
+ s.settimeout(8); s.connect((%r,%r))
+ if %r=='udp-echo':
+  payload=secrets.token_bytes(1200); s.send(payload)
+  if s.recv(1400)!=payload: raise ValueError('invalid echo')
+ result['ok']=True
+except (OSError,ValueError) as error: result['error_type']=type(error).__name__
+finally:
+ if s is not None: s.close()
+result.update(ended=time.time(),probe_seconds=time.monotonic()-started)
+print(json.dumps(result))
+""" % (
+        spec["transport"],
+        c["hosts"][spec["to"]]["address"],
+        spec["port"],
+        spec["transport"],
     )
-    if spec["transport"] == "udp-echo":
-        code += "p=secrets.token_bytes(1200); s.send(p); assert s.recv(1400)==p; "
-    code += "s.close(); print('ok')"
+    sent = time.time()
     started = time.monotonic()
     try:
         if spec["from"] == "local":
@@ -44,14 +82,43 @@ def segment(c, spec):
                 command += ["-J", host["jump"]]
             command += [host["ssh"], shlex.join(["python3", "-c", code])]
             p = run(command, check=False, timeout=25)
-        ok = p.returncode == 0 and p.stdout.strip() == "ok"
+        received, elapsed = time.time(), time.monotonic() - started
+        if p.returncode:
+            return {
+                **spec,
+                "status": "unmeasured",
+                "reason": "probe_execution_failed; target path not established",
+                "execution_exit": p.returncode,
+                "elapsed": elapsed,
+            }
+        try:
+            remote = json.loads(p.stdout)
+            clock = clock_evidence(sent, received, elapsed, remote)
+            if type(remote["ok"]) is not bool:
+                raise ValueError("invalid probe status")
+        except (ValueError, TypeError, KeyError):
+            return {
+                **spec,
+                "status": "unmeasured",
+                "reason": "invalid_probe_receipt",
+                "elapsed": elapsed,
+            }
         return {
             **spec,
-            "status": "passed" if ok else "failed",
+            "status": "passed" if remote["ok"] else "failed",
+            "elapsed": elapsed,
+            "probe_seconds": remote["probe_seconds"],
+            "error_type": remote.get("error_type"),
+            "clock": clock,
+        }
+    except (Error, OSError) as error:
+        return {
+            **spec,
+            "status": "unmeasured",
+            "reason": "probe_execution_failed; target path not established",
+            "error_type": type(error).__name__,
             "elapsed": time.monotonic() - started,
         }
-    except (Error, OSError):
-        return {**spec, "status": "failed", "elapsed": time.monotonic() - started}
 
 
 def egress(proxy, url):

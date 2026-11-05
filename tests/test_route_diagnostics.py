@@ -1,12 +1,88 @@
 import json
 from pathlib import Path
+import socket
 import subprocess
 import tempfile
 from unittest.mock import patch
 import unittest
 
-from vrk.route_diagnostics import diagnose, egress
+from vrk.route_diagnostics import clock_evidence, diagnose, egress, segment
 from test_subscription import inventory
+
+
+class SegmentEvidenceTests(unittest.TestCase):
+    def test_clock_offset_excludes_remote_probe_work_without_assuming_equal_latency(self):
+        clock = clock_evidence(
+            100, 110, 10, {"started": 105.2, "ended": 114.8, "probe_seconds": 9.6}
+        )
+        self.assertTrue(clock["comparable"])
+        self.assertAlmostEqual(clock["offset_seconds_min"], 4.8)
+        self.assertAlmostEqual(clock["offset_seconds_max"], 5.2)
+
+    def test_clock_step_cannot_be_used_to_align_logs(self):
+        clock = clock_evidence(100, 110, 10, {"started": 105.2, "ended": 120, "probe_seconds": 9.6})
+        self.assertFalse(clock["comparable"])
+        self.assertIsNone(clock["offset_seconds_min"])
+
+    def test_local_tcp_probe_records_actual_probe_time_separately_from_execution(self):
+        c = inventory()
+        destination = next(iter(c["hosts"]))
+        c["hosts"][destination]["address"] = "127.0.0.1"
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            receipt = segment(
+                c,
+                {
+                    "from": "local",
+                    "to": destination,
+                    "port": listener.getsockname()[1],
+                    "transport": "tcp",
+                },
+            )
+        self.assertEqual(receipt["status"], "passed")
+        self.assertGreaterEqual(receipt["elapsed"], receipt["probe_seconds"])
+        self.assertTrue(receipt["clock"]["comparable"])
+        self.assertLessEqual(receipt["clock"]["offset_seconds_min"], 0)
+        self.assertGreaterEqual(receipt["clock"]["offset_seconds_max"], 0)
+
+    def test_failed_ssh_is_unmeasured_instead_of_a_failed_target_path(self):
+        c = inventory()
+        origin = next(iter(c["hosts"]))
+        c["hosts"][origin]["ssh"] = "example-host"
+        with patch(
+            "vrk.route_diagnostics.run",
+            return_value=subprocess.CompletedProcess([], 255, "", "SSH authentication failed"),
+        ):
+            receipt = segment(c, {"from": origin, "to": origin, "port": 443, "transport": "tcp"})
+        self.assertEqual(receipt["status"], "unmeasured")
+        self.assertEqual(receipt["execution_exit"], 255)
+        self.assertNotIn("authentication", json.dumps(receipt))
+
+    def test_remote_socket_failure_retains_probe_cause_and_clock_receipt(self):
+        c = inventory()
+        origin = next(iter(c["hosts"]))
+        c["hosts"][origin]["ssh"] = "example-host"
+        remote = {
+            "started": 105.2,
+            "ended": 114.8,
+            "probe_seconds": 9.6,
+            "ok": False,
+            "error_type": "TimeoutError",
+        }
+        with (
+            patch("vrk.route_diagnostics.time.time", side_effect=[100, 110]),
+            patch("vrk.route_diagnostics.time.monotonic", side_effect=[200, 210]),
+            patch(
+                "vrk.route_diagnostics.run",
+                return_value=subprocess.CompletedProcess([], 0, json.dumps(remote), ""),
+            ),
+        ):
+            receipt = segment(c, {"from": origin, "to": origin, "port": 443, "transport": "tcp"})
+        self.assertEqual(receipt["status"], "failed")
+        self.assertEqual(receipt["error_type"], "TimeoutError")
+        self.assertEqual(receipt["probe_seconds"], 9.6)
+        self.assertAlmostEqual(receipt["clock"]["offset_seconds_min"], 4.8)
 
 
 class EgressEvidenceTests(unittest.TestCase):
