@@ -181,8 +181,13 @@ def exercise(proxy, c):
     def attempt(key, fn):
         try:
             results[key] = fn()
-        except (Error, OSError, ValueError, http.client.HTTPException):
-            results[key] = {"ok": False, "reason": "controlled_probe_failed; inspect core logs"}
+        except (Error, OSError, ValueError, http.client.HTTPException) as error:
+            results[key] = {
+                "ok": False,
+                "reason": "controlled_probe_failed; inspect core logs",
+                "error_type": type(error).__name__,
+                "phase": key,
+            }
 
     if c.get("stream_url"):
 
@@ -233,6 +238,7 @@ def exercise(proxy, c):
     if c.get("udp"):
         spec = c["udp"]
         attempt("udp", lambda: udp(proxy, spec["host"], spec["port"], spec.get("size", 1200)))
+        results["udp"]["target"] = {"host": spec["host"], "port": spec["port"]}
     if not results:
         raise Error("exercise needs explicit controlled endpoints")
     return results

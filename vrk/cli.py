@@ -68,6 +68,7 @@ def parser():
             s.add_argument("--cases", required=True)
             s.add_argument("--output", required=True)
         if command == "benchmark":
+            s.add_argument("--connect-ip")
             s.add_argument("--timeout", type=int, default=90)
             s.add_argument("--cpu-host")
             s.add_argument("--proxy", required=True)
@@ -106,6 +107,10 @@ def parser():
     diagnose.add_argument("--catalog", required=True)
     diagnose.add_argument("--cases", required=True)
     diagnose.add_argument("--output", required=True)
+    audit = sub.add_parser("audit")
+    audit.add_argument("--catalog", required=True)
+    audit.add_argument("--cases", required=True)
+    audit.add_argument("--output", required=True)
     return p
 
 
@@ -234,6 +239,29 @@ def main(argv=None):
             result = diagnose(read(a.catalog), read(a.cases), a.output)
             print(encode(result))
             return 0 if result["all_passed"] else 1
+        if a.command == "audit":
+            from .audit import audit
+
+            result = audit(read(a.catalog), read(a.cases), a.output)
+            print(
+                encode(
+                    {
+                        "completed": result["completed"],
+                        "routes": {
+                            key: {
+                                "qualified": row.get("qualified", False),
+                                "attribution": row["attribution"],
+                            }
+                            for key, row in result["routes"].items()
+                        },
+                    }
+                )
+            )
+            return (
+                0
+                if result["completed"] and all(r["qualified"] for r in result["routes"].values())
+                else 1
+            )
         if a.command == "subscription":
             if a.host:
                 if (
@@ -518,6 +546,10 @@ def main(argv=None):
         if a.command == "benchmark":
             from .diagnostics import benchmark
 
+            if Path(a.output).exists():
+                raise Error(
+                    "benchmark output exists; preserve prior evidence and choose a new path"
+                )
             atomic(
                 a.output,
                 benchmark(
@@ -528,6 +560,7 @@ def main(argv=None):
                     cpu_host=a.cpu_host,
                     jump=a.jump,
                     request_timeout=a.timeout,
+                    connect_ip=a.connect_ip,
                 ),
             )
             print("Saved " + a.output)

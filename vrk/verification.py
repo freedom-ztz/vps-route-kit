@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import time
 import urllib.parse
+import ipaddress
 from .util import Error, atomic, run, read
 
 TIMINGS = (
@@ -55,7 +56,11 @@ def validate_cases(c):
         raise Error("verification requires explicit HTTPS targets")
     names = set()
     for t in c["targets"]:
-        if not isinstance(t, dict) or set(t) != {"name", "url", "expect"}:
+        if (
+            not isinstance(t, dict)
+            or not {"name", "url", "expect"} <= set(t)
+            or set(t) - {"name", "url", "expect", "connect_ip"}
+        ):
             raise Error("target requires name/url/expect")
         if not isinstance(t["name"], str) or "/" in t["name"] or not isinstance(t["url"], str):
             raise Error("invalid target name or URL")
@@ -72,6 +77,7 @@ def validate_cases(c):
         ):
             raise Error("invalid HTTPS verification target")
         names.add(t["name"])
+        connect_override(t["url"], t.get("connect_ip"))
     for k, default in [("rounds", 60), ("workers", 4)]:
         value = c.get(k, default)
         if type(value) is not int or value < 1 or value > (32 if k == "workers" else 10000):
@@ -95,6 +101,20 @@ def validate_cases(c):
     return c
 
 
+def connect_override(url, connect_ip=None):
+    if connect_ip is None:
+        return []
+    try:
+        ip = str(ipaddress.IPv4Address(connect_ip))
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError()
+        port = parsed.port or 443
+    except (ValueError, TypeError) as error:
+        raise Error("connect_ip requires IPv4 and a credential-free HTTPS URL") from error
+    return ["--connect-to", f"{parsed.hostname}:{port}:{ip}:{port}"]
+
+
 def probe(name, proxy, target, connect_timeout, timeout):
     started = time.time()
     command = [
@@ -115,6 +135,7 @@ def probe(name, proxy, target, connect_timeout, timeout):
         "%{json}",
         target["url"],
     ]
+    command += connect_override(target["url"], target.get("connect_ip"))
     try:
         p = run(command, check=False, timeout=timeout + 5)
     except (Error, OSError) as e:

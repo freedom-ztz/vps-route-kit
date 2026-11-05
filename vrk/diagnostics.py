@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import time
 from .util import Error, run, read
+from .verification import connect_override
 
 
 def cpu_snapshot(host=None, jump=None):
@@ -62,6 +63,8 @@ def benchmark(
     cpu_host=None,
     jump=None,
     request_timeout=90,
+    connect_ip=None,
+    on_sample=None,
 ):
     if rounds < 1 or rounds > 100:
         raise Error("rounds must be between 1 and 100")
@@ -95,8 +98,11 @@ def benchmark(
                 ]
                 if direction == "up":
                     args += ["--data-binary", "@" + str(payload)]
+                args += connect_override(url, connect_ip)
                 before = cpu_snapshot(cpu_host, jump)
+                started = time.time()
                 r = run(args, check=False, timeout=request_timeout + 10)
+                ended = time.time()
                 after = cpu_snapshot(cpu_host, jump)
                 try:
                     meta = json.loads(r.stdout)
@@ -107,6 +113,9 @@ def benchmark(
                 rows.append(
                     {
                         "round": round_no,
+                        "started": started,
+                        "ended": ended,
+                        "dns_mode": "fixed_ip" if connect_ip else "system",
                         "direction": direction,
                         "exit": r.returncode,
                         "error": r.stderr[:1024],
@@ -130,8 +139,25 @@ def benchmark(
                         "cpu_sampling": {"before": before, "after": after},
                     }
                 )
+                if on_sample is not None:
+                    on_sample(dict(rows[-1]))
     return {
         "samples": rows,
+        "completion": {
+            direction: {
+                "expected": rounds,
+                "completed": sum(r["completed"] for r in rows if r["direction"] == direction),
+            }
+            for direction in ["down", "up"]
+        },
+        "qualified_median_mbps": {
+            direction: (
+                statistics.median(r["mbps"] for r in rows if r["direction"] == direction)
+                if all(r["completed"] for r in rows if r["direction"] == direction)
+                else None
+            )
+            for direction in ["down", "up"]
+        },
         "median_completed_mbps": {
             direction: (
                 statistics.median(v)

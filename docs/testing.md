@@ -40,7 +40,7 @@ CI 不连接私人 VPS，不使用真实凭据，也不保证某个运营商网�
 
 默认 60 轮、间隔 30 秒，同时检查受控服务与公共目标；可以声明独立旧节点作为对照。它不修改 VPS、OpenWrt 或客户端网络设置，不重试后覆盖第一次失败，也不因某条路径不可达就自动排除。
 
-- JSONL 逐项保存 curl 原始退出码、HTTP 状态、连接/TLS/首字节耗时和本地端口；本地端口可与代理核心日志关联。
+- JSONL 逐项保存 curl 原始退出码、HTTP 状态、连接/TLS/首字节耗时和本地端口；本地端口可与代理核心日志关联。使用本地 SOCKS 时，`time_connect` 仅是连接本地监听的耗时，不能当作入口 RTT；入口 TCP 连通性由 `audit` 单独检查。
 - 强制使用显式代理，忽略环境变量 NO_PROXY，避免把直连当作代理成功。
 - 不记录响应正文或完整业务 URL，不自动猜测“线路故障”还是“项目缺陷”；`proxy_or_transport` 必须结合核心日志及对照实验判断。
 - 输出文件权限为 600，拒绝覆盖已有结果；中断时保留样本和 `completed: false` 的汇总。
@@ -49,6 +49,16 @@ CI 不连接私人 VPS，不使用真实凭据，也不保证某个运营商网�
 需要诊断失败时，同时保存独立测试核心的日志。仅凭 curl 的 SSL_ERROR_SYSCALL 不能确定目标网站 TLS 出错：代理节点建连被核心取消，也可能表现为这个错误。测速命令现在也保存错误原因与 TLS 阶段耗时，并强制使用指定代理。
 
 ## 分段诊断及连接练习
+
+### 受控端点与整批验收
+
+`python3 -m vrk.probe_server --listen 127.0.0.1 --cert /private/cert.pem --key /private/key.pem` 提供临时 HTTPS 18446 与 UDP 回显 18445。公网监听必须显式设置地址并检查端口，测试后停止；它不提供订阅或代理服务。TLS 握手超时为 10 秒，握手后连接超时为 120 秒；慢握手在独立线程中处理。`/metadata` 声明下载、上传、流式响应和超时参数。启动后先验证证书、端点长度、同一连接空闲 30 秒复用与 UDP 原样回显，保存带校验值的自检收据，再进行节点测试。
+
+`vrk audit --catalog /private/catalog.json --cases /private/audit.json --output /private/new-batch` 要求清单覆盖全部线路。阶段依次为逐节点连接与 DNS 对照、全部节点三轮测速、逐节点会话诊断、最后 30 分钟稳定性观察。抓包和资源采样先写入被测服务器本地，测试结束后再取回，避免 SSH 实时日志占用被测链路；采集器启动失败须先修复或明确记为缺失证据。大流量与稳定性测试不重叠；一个节点失败不会阻止其他节点或跳过该节点测速。测速不能开始时也保存失败样本，不能填成 0 Mbps 或当作未执行。UDP 能力使用预先登记的独立主机回显，禁止将访问出口宿主机自身的结果推广为普通 UDP 出站能力。
+
+DNS 对照在正常域名请求之外使用 `connect_ip`：通过 curl `--connect-to` 固定连接 IP，保留原域名 SNI 与证书校验。对照差异只能提示解析相关问题，仍须结合出口服务器 DNS 证据与嗅探配置归因。测速也支持 `--connect-ip`。每个测速样本记录开始、结束时间与是否完整传输；成功样本中位数和所有轮次完整后的中位数分开，超时样本不会被静默删除。单次超时不自动归因为运营商或协议识别。
+
+整批清单包含 `routes`、`targets`、`evidence`、`stability`、`fixture_controls`；每条线路明确 `proxy`、`pinned_target`、`egress_url`、`exercise`、`benchmark` 和只读配置核对的 `configuration` 收据。夹具控制收据必须包含 `passed: true` 并匹配 SHA-256。输出保留每条原始样本、来源配置、工具与目标摘要、阶段完成状态。只有全部要求实际完成才标记合格；传输失败与工具异常分别记录。不要把稳态通过、压力测试和真实业务登录混为一个结论。
 
 `vrk diagnose --catalog /private/catalog.json --cases /private/diagnosis.json --output /private/new-result.json`，参考 [诊断清单](../examples/diagnosis.json)。每条线路明确固定代理监听、只读 HTTPS 目标、返回实际源 IPv4 的受控 egress_url。分段检查由 local 或配置了 SSH 的 host 发起；缺少权限标记未测，不自动认定线路或项目故障。UDP 分段只支持受控 echo，不用“发送 UDP 未报错”判断端口可达。
 

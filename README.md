@@ -203,6 +203,7 @@ vrk subscription publish --bundle /private/release-1 --publish-config /private/p
 | 修改配置 | 编辑源 JSON → `vrk plan` → `vrk apply` |
 | 状态、日志、基础诊断 | `vrk status`、`vrk logs`、`vrk doctor` |
 | 节点导出、网络验收、测速 | `vrk export`、`vrk verify`、`vrk benchmark` |
+| 整批分阶段验收 | `vrk audit`（连接、全部节点测速、会话、稳定性） |
 | 备份与回滚 | `vrk backup`、`vrk rollback` |
 | 显式升级与卸载 | `vrk upgrade`、`vrk uninstall` |
 
@@ -239,7 +240,7 @@ python3 scripts/validate_delivery.py --mihomo /path/to/mihomo
 git diff --check
 ```
 
-源码：`vrk/cli.py` 为命令入口，`config.py` 校验配置，`render.py` 生成核心配置，`deploy.py` 管理部署事务，`remote.py` 管理 SSH，`export.py` 导出节点，`verification.py` / `diagnostics.py` 执行验收与诊断，`catalog.py` / `subscription.py` / `publishing.py` 管理线路及订阅交付。测试在 `tests/`，脱敏配置在 `examples/`。
+源码：`vrk/cli.py` 为命令入口，`config.py` 校验配置，`render.py` 生成核心配置，`deploy.py` 管理部署事务，`remote.py` 管理 SSH，`export.py` 导出节点，`audit.py` / `verification.py` / `diagnostics.py` 执行验收与诊断，`catalog.py` / `subscription.py` / `publishing.py` 管理线路及订阅交付。测试在 `tests/`，脱敏配置在 `examples/`。
 
 提交 Issue 或 PR 时提供脱敏后的环境、步骤、预期和结果；行为修改附相关回归测试。不要提交真实 IP/域名、凭据、证书、节点导出、备份或业务日志。发布前审查暂存差异，自动检查无法识别所有隐私。
 

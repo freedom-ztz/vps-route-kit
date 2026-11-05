@@ -18,6 +18,24 @@ def cases():
 
 
 class VerificationTests(unittest.TestCase):
+    def test_fixed_ip_changes_connection_destination_without_disabling_tls(self):
+        target = {**cases()["targets"][0], "connect_ip": "192.0.2.10"}
+        c = cases()
+        c["targets"] = [target]
+        validate_cases(c)
+        with patch(
+            "vrk.verification.run",
+            return_value=SimpleNamespace(returncode=0, stdout='{"http_code":204}', stderr=""),
+        ) as run:
+            self.assertTrue(probe("test", c["proxies"]["test"], target, 8, 12)["ok"])
+        args = run.call_args.args[0]
+        self.assertEqual(
+            args[args.index("--connect-to") + 1], "health.example.com:443:192.0.2.10:443"
+        )
+        self.assertIn(target["url"], args)
+        self.assertNotIn("--insecure", args)
+        self.assertNotIn("-k", args)
+
     def test_no_proxy_environment_cannot_bypass_explicit_proxy(self):
         result = SimpleNamespace(
             returncode=0,
