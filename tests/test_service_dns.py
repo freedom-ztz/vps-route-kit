@@ -52,7 +52,7 @@ class ServiceDNSTests(unittest.TestCase):
             "xray", "/opt/core", ["run"], resolver_file="/var/lib/vrk/current/resolv-xray.conf"
         )
         self.assertIn(
-            'BindReadOnlyPaths="/var/lib/vrk/current/resolv-xray.conf:/etc/resolv.conf"', content
+            'BindReadOnlyPaths="/var/lib/vrk/current/resolv-xray.conf":/etc/resolv.conf', content
         )
         self.assertNotIn("ExecStartPre", content)
         self.assertNotIn("BindReadOnlyPaths", deploy.unit("realm", "/opt/realm", []))

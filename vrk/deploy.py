@@ -132,7 +132,7 @@ def unit(component, binary_path, args, dependencies=(), *, resolver_file=None):
     resolver = ""
     if resolver_file:
         source = str(resolver_file).replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%")
-        resolver = f'BindReadOnlyPaths="{source}:/etc/resolv.conf"\n'
+        resolver = f'BindReadOnlyPaths="{source}":/etc/resolv.conf\n'
     return f"""# Managed by VPS Route Kit
 [Unit]
 Description=VPS Route Kit {component}
