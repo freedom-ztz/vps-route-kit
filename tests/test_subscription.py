@@ -80,7 +80,7 @@ class CatalogTests(unittest.TestCase):
             if kind == "carrier":
                 c["nodes"]["node"]["dialer-proxy"] = "node"
             if kind == "country":
-                c["routes"][0]["exit_country"] = "HK"
+                c["routes"][0]["exit_country"] = "ZZ"
             if kind == "unknown":
                 c["routes"][0]["node"] = "missing"
             with self.subTest(kind=kind), self.assertRaises(Error):
@@ -246,6 +246,23 @@ class SubscriptionTests(unittest.TestCase):
         g = groups([], "vrk")[1]
         self.assertEqual(g["proxies"], ["REJECT"])
         self.assertEqual(g["filter"], "^(SG|JP|US)-")
+
+    def test_hong_kong_exit_is_manual_only_in_both_delivery_modes(self):
+        c = inventory()
+        c["routes"][0]["exit_country"] = "HK"
+        catalog.validate(c)
+        nodes, names = catalog.proxies(c, c["routes"])
+        self.assertEqual(nodes[0]["name"], "HK-test")
+        automatic, manual = groups(["SG-primary", *names])[1:]
+        self.assertEqual(automatic["proxies"], ["REJECT", "SG-primary"])
+        self.assertIn("HK-test", manual["proxies"])
+        automatic, manual = groups([], "vrk")[1:]
+        self.assertEqual(automatic["filter"], "^(SG|JP|US)-")
+        self.assertEqual(manual["filter"], "^(SG|JP|US|HK)-")
+
+    def test_hong_kong_only_has_no_automatic_proxy_fallback(self):
+        automatic = groups(["HK-test"])[1]
+        self.assertEqual(automatic["proxies"], ["REJECT"])
 
     def test_xray_change_exposes_all_shared_listeners(self):
         c = validate(sample())

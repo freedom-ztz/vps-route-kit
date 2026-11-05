@@ -76,7 +76,7 @@ vrk export --host root@exit-host --format mihomo --output .private/relay.json \
 
 ## 线路目录与订阅
 
-[线路目录示例](../examples/catalog.json) 与原服务器部署 JSON 分开。`hosts` 保存服务器地址和可选 `ssh` / `jump`；`nodes` 保存原生 Mihomo VLESS-REALITY 或 Hysteria 2 节点及认证，`routes` 引用节点，并声明唯一 id、依次经过的主机 path、exit_host、exit_country（SG/JP/US）与 expected_exit_ipv4。香港只能出现在中转路径。客户端中转通过节点的 dialer-proxy 引用另一节点 id，不接受未知引用或循环。
+[线路目录示例](../examples/catalog.json) 与原服务器部署 JSON 分开。`hosts` 保存服务器地址和可选 `ssh` / `jump`；`nodes` 保存原生 Mihomo VLESS-REALITY 或 Hysteria 2 节点及认证，`routes` 引用节点，并声明唯一 id、依次经过的主机 path、exit_host、exit_country（SG/JP/US/HK）与 expected_exit_ipv4。香港出口仅进入手动选择，自动回退仍按新加坡、日本、美国排序，全部不可用时拒绝外网。客户端中转通过节点的 dialer-proxy 引用另一节点 id，不接受未知引用或循环。固定服务端 TCP/UDP 转发则使用入口地址与端口、落地端认证和服务名，可独立导出为两种节点订阅。
 
 `vrk catalog validate/plan --catalog ...` 输出不含认证的线路与共享依赖报告。`plan --previous /private/old-report.json` 比较增删和变化。多条路径共用同一落地机时只构成入口路径冗余。
 

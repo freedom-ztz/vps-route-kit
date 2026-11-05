@@ -101,12 +101,14 @@ def access(path, rotate=False):
 
 def groups(names, provider=None):
     # Mihomo uses the first member when none are healthy.
-    fallback = {"name": "自动", "type": "fallback", **HEALTH, "proxies": ["REJECT"] + list(names)}
+    automatic = [name for name in names if not name.startswith("HK-")]
+    fallback = {"name": "自动", "type": "fallback", **HEALTH, "proxies": ["REJECT"] + automatic}
     manual = {"name": "手动", "type": "select", "proxies": list(names) + ["REJECT"]}
     if provider:
         for g in (fallback, manual):
             g["use"] = [provider]
-            g["filter"] = "^(SG|JP|US)-"
+        fallback["filter"] = "^(SG|JP|US)-"
+        manual["filter"] = "^(SG|JP|US|HK)-"
     return [{"name": "外网", "type": "select", "proxies": ["自动", "手动"]}, fallback, manual]
 
 

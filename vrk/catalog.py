@@ -96,8 +96,8 @@ def validate(c):
         require(len(set(path)) == len(path), "route path cycle")
         require(r.get("exit_host") == path[-1], "exit_host must end the path")
         require(
-            r.get("exit_country") in ("SG", "JP", "US"),
-            "automatic exits only support SG/JP/US; HK is transit only",
+            r.get("exit_country") in ("SG", "JP", "US", "HK"),
+            "supported exits are SG/JP/US and manual-only HK",
         )
         require(
             isinstance(ipaddress.ip_address(r.get("expected_exit_ipv4")), ipaddress.IPv4Address),
@@ -240,7 +240,9 @@ def selected(c, base, candidates=False):
     validate(c)
     routes = [r for r in c["routes"] if candidates or accepted(c, r, base)]
     require(bool(routes), "no accepted routes; use --include-candidates only for isolated tests")
-    return sorted(routes, key=lambda r: (("SG", "JP", "US").index(r["exit_country"]), r["id"]))
+    return sorted(
+        routes, key=lambda r: (("SG", "JP", "US", "HK").index(r["exit_country"]), r["id"])
+    )
 
 
 def proxies(c, routes):
