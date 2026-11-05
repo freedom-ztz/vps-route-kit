@@ -100,7 +100,8 @@ def access(path, rotate=False):
 
 
 def groups(names, provider=None):
-    fallback = {"name": "自动", "type": "fallback", **HEALTH, "proxies": list(names) + ["REJECT"]}
+    # Mihomo uses the first member when none are healthy.
+    fallback = {"name": "自动", "type": "fallback", **HEALTH, "proxies": ["REJECT"] + list(names)}
     manual = {"name": "手动", "type": "select", "proxies": list(names) + ["REJECT"]}
     if provider:
         for g in (fallback, manual):
@@ -163,7 +164,11 @@ def build(
     local = c.get("local", {})
     if local and (set(local) != {"domains", "dns"} or not local["domains"] or not local["dns"]):
         raise Error("local requires domains and DNS")
-    policy = {"rule-set:domestic-domains": dns["domestic"]}
+    # Health-probe DNS must not depend on the group being tested.
+    policy = {
+        "rule-set:domestic-domains": dns["domestic"],
+        urllib.parse.urlsplit(HEALTH["url"]).hostname: dns["domestic"],
+    }
     for d in local.get("domains", []):
         catalog.address(d)
         policy["+." + d] = local["dns"]

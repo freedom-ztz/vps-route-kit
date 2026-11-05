@@ -145,9 +145,13 @@ class SubscriptionTests(unittest.TestCase):
                 full["dns"]["nameserver-policy"]["+.corp.example.com"], ["192.168.2.1"]
             )
             auto = full["proxy-groups"][1]
-            self.assertEqual(auto["proxies"], ["SG-test", "REJECT"])
+            self.assertEqual(auto["proxies"], ["REJECT", "SG-test"])
             self.assertNotIn("DIRECT", auto["proxies"])
             self.assertEqual(auto["timeout"], 8000)
+            self.assertEqual(
+                full["dns"]["nameserver-policy"]["www.gstatic.com"],
+                ["https://dns.alidns.com/dns-query"],
+            )
             manifest = (b / "manifest.json").read_text()
             self.assertNotIn(c["nodes"]["node"]["uuid"], manifest)
             self.assertNotIn(read(Path(d) / "access.json")["token"], manifest)

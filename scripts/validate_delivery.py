@@ -8,10 +8,12 @@ import socket
 import socketserver
 import struct
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 parser = argparse.ArgumentParser()
@@ -201,7 +203,7 @@ try:
             deadline = time.monotonic() + 10
             while time.monotonic() < deadline:
                 try:
-                    if names():
+                    if ("proxy-providers" not in config and api("/proxies")[0] == 200) or names():
                         return proc
                 except (OSError, ValueError, KeyError):
                     pass
@@ -256,6 +258,27 @@ try:
         assert code != 0 and not names()
         assert json.loads(api("/proxies/auto")[1])["now"] == "REJECT"
         result["empty_first_start_rejected"] = True
+        p.terminate()
+        p.wait()
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from vrk.subscription import groups
+
+        config.pop("proxy-providers")
+        config["proxies"] = nodes
+        config["proxy-groups"] = groups([n["name"] for n in nodes])
+        config["proxy-groups"][1].update(
+            url="http://health.invalid/generate_204", interval=1, timeout=800
+        )
+        config["rules"] = ["MATCH,外网"]
+        cfg.write_text(json.dumps(config))
+        inline = root / "inline"
+        inline.mkdir()
+        p = start(inline)
+        time.sleep(2)
+        assert request()[0] != 0
+        group = json.loads(api("/proxies/" + urllib.parse.quote("自动"))[1])
+        assert group["now"] == "REJECT"
+        result["inline_all_failed_rejected"] = True
 finally:
     if p and p.poll() is None:
         p.terminate()
