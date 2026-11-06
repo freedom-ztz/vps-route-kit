@@ -81,12 +81,41 @@ def validate(c):
                 "exit_country",
                 "expected_exit_ipv4",
                 "acceptance",
+                "display_name",
+                "priority",
             },
             "invalid route fields",
         )
         name(r.get("id"))
         require(r["id"] not in seen, "duplicate route id")
         seen.add(r["id"])
+        require(
+            type(r.get("priority", 100)) is int and 0 <= r.get("priority", 100) <= 10000,
+            "route priority must be an integer from 0 to 10000",
+        )
+        if "display_name" in r:
+            label = r["display_name"]
+            require(
+                isinstance(label, str)
+                and 1 <= len(label) <= 80
+                and label.strip() == label
+                and not any(ord(ch) < 32 or ord(ch) == 127 for ch in label)
+                and label
+                not in {
+                    "DIRECT",
+                    "REJECT",
+                    "COMPATIBLE",
+                    "GLOBAL",
+                    "PASS",
+                    "REJECT-DROP",
+                    "外网",
+                    "自动",
+                    "手动",
+                    "测试",
+                }
+                and not label.startswith(("_carrier-", "_vrk-hop-")),
+                "invalid route display_name",
+            )
         require(r.get("node") in nodes, "unknown route node")
         path = r.get("path")
         require(
@@ -143,7 +172,11 @@ def fingerprint(c, r):
     return digest(
         encode(
             {
-                "route": {k: v for k, v in r.items() if k != "acceptance"},
+                "route": {
+                    k: v
+                    for k, v in r.items()
+                    if k not in {"acceptance", "display_name", "priority"}
+                },
                 "hosts": {k: c["hosts"][k] for k in r["path"]},
                 "nodes": nodes,
             }
@@ -241,7 +274,13 @@ def selected(c, base, candidates=False):
     routes = [r for r in c["routes"] if candidates or accepted(c, r, base)]
     require(bool(routes), "no accepted routes; use --include-candidates only for isolated tests")
     return sorted(
-        routes, key=lambda r: (("SG", "JP", "US", "HK").index(r["exit_country"]), r["id"])
+        routes,
+        key=lambda r: (
+            ("SG", "JP", "US", "HK").index(r["exit_country"]),
+            r.get("priority", 100),
+            len(r["path"]),
+            r["id"],
+        ),
     )
 
 
@@ -261,7 +300,8 @@ def proxies(c, routes):
     names = []
     for r in routes:
         n = copy.deepcopy(c["nodes"][r["node"]])
-        n["name"] = r["exit_country"] + "-" + r["id"]
+        n["name"] = r.get("display_name", r["exit_country"] + "-" + r["id"])
+        require(n["name"] not in output, "duplicate exported node name")
         if n.get("dialer-proxy"):
             n["dialer-proxy"] = carrier(n["dialer-proxy"])
         output[n["name"]] = n

@@ -137,3 +137,7 @@ idle 与 UDP 需要 socks5h 监听；空闲测试要求复用同一 TLS 连接�
 修复确认至少同时具备“变更确实生效”和“相应故障未再观测到”的证据。线路仍失败而诊断不足时交付原因未确定，不通过反复切换、扩大超时或周期重启制造通过。单个公共目标异常先与变更前及受控目标比较，不能反复回滚/重启正常服务。
 
 不同客户端、接口、构建或不同时段的速度不可作为严格 A/B 提速结论。Linux 虚拟机通过不能代替 Mac Wi-Fi 通过，配置解析成功也不能代替 GUI 导入或实际连接。宿主机重启、生产网关接入与应用登录应独立授权和记录；不在独立客户端测试中顺带修改 OpenWrt、公司 DNS/DHCP 或出口策略。
+
+订阅返回 Cloudflare 1010 时，先对照客户端真实 `User-Agent`。Python urllib 默认请求头被拒绝，不代表 Mihomo/v2rayN 的订阅请求失败；项目规则下载使用明确的 `vps-route-kit/版本` 标识并继续校验 TLS 与 SHA-256。验证实际客户端的 200 响应、产物哈希及非挑战内容，不能仅为消除工具误报关闭全站浏览器检查。参考 [Cloudflare 1010 说明](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1010/)。
+
+生产配置做语义差异比较时使用 YAML 1.2 解析器；YAML 1.1 可能把未加引号的 `off` 当成布尔值，而 `find-process-mode` 需要枚举字符串。候选先用目标机器上的实际核心校验，确保除节点与策略组外的 DNS、规则、端口等未发生类型或取值变化。

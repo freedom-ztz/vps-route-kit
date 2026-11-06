@@ -94,11 +94,13 @@ vrk export --host root@exit-host --format mihomo --output .private/relay.json \
 
 [线路目录示例](../examples/catalog.json) 与原服务器部署 JSON 分开。`hosts` 保存服务器地址和可选 `ssh` / `jump`；`nodes` 保存原生 Mihomo VLESS-REALITY 或 Hysteria 2 节点及认证，`routes` 引用节点，并声明唯一 id、依次经过的主机 path、exit_host、exit_country（SG/JP/US/HK）与 expected_exit_ipv4。香港出口仅进入手动选择，自动回退仍按新加坡、日本、美国排序，全部不可用时拒绝外网。客户端中转通过节点的 dialer-proxy 引用另一节点 id，不接受未知引用或循环。固定服务端 TCP/UDP 转发则使用入口地址与端口、落地端认证和服务名，可独立导出为两种节点订阅。
 
+线路可选 `display_name`，例如 `🇸🇬 新加坡·V`、`🇺🇸 港→美国·X`；国旗表示出口，V/X/H2 分别代表 Vision/XHTTP/Hysteria 2。`id` 保持稳定，展示名称必须唯一且不能占用内置节点或生成的策略组名。只改展示名称不使网络验收指纹失效；认证、地址、端口、路径和出口变化仍使旧证据失效。国家分组依据 `exit_country`，不从国旗或名称猜测。可选 `priority` 为 0–10000 的整数，默认 100，越小越优先；只调整同一出口国家内的顺序，不改变新加坡→日本→美国的国家顺序。相同优先级先直达再中转，再按稳定 id 排序。展示名称或优先级修改不改变单条线路的网络身份，但策略整体仍须复验。
+
 `vrk catalog validate/plan --catalog ...` 输出不含认证的线路与共享依赖报告。`plan --previous /private/old-report.json` 比较增删和变化。多条路径共用同一落地机时只构成入口路径冗余。
 
 每条线路可用 `acceptance.diagnosis`、`acceptance.stability` 引用相对目录的私有结果。诊断须匹配线路指纹及预期出口，并通过长连接、空闲恢复、双向传输与适用的 UDP 练习；稳定性须完成至少 1800 秒、两个目标各 60 次且无失败。verify 中的代理名称须与线路 id 相同。仅线路及实际依赖变化使旧指纹失效；无关节点变化不要求重测。旧版未绑定证据不能用于正式发布。单条失败不会使同批其他合格线路失效。
 
-`rules` 可覆盖随包固定的 domains / cidrs 锁，每项为 HTTPS url、sha256；空内容、哈希不符或下载失败拒绝构建，不更新旧发布。默认规则来源是固定提交的 MetaCubeX/meta-rules-dat CN 域名和 IPv4 网段，更新须审查锁文件后重新构建。
+`rules` 可覆盖随包固定的 domains / cidrs 锁，每项为 HTTPS url、sha256；空内容、哈希不符或下载失败拒绝构建，不更新旧发布。默认规则来源是固定提交的 MetaCubeX/meta-rules-dat CN 域名和 IPv4 网段，更新须审查锁文件后重新构建。客户端从订阅站点直连下载规则，不依赖尚未就绪的外网代理组；首次接入须能访问订阅及其规则地址。
 
 可选 `dns.bootstrap/domestic/remote` 分别设置节点引导、国内与外网解析。可选 `company.domains/cidrs/dns` 设置私有公司规则；公司域名只使用显式公司 DNS、返回真实地址，不配置公共回退。公司规则优先于国内分类；公共模板不含真实公司域名。
 
@@ -109,6 +111,8 @@ Mihomo 1.19.32 的 provider 内节点不能直接通过名称作为 dialer-proxy
 选择 Clash 时 `--mihomo` 必填，使用指定核心做原生校验。完整配置监听回环 7890 和 DNS 1053，LAN/TUN 默认关闭；端口冲突由客户端环境处理，不自动修改系统配置。
 
 可选 `local` 对象使用 `domains` 与 `dns` 数组，显式指定本地域名及解析器，同时生成直连和真实地址规则。仅排除 Fake-IP 不会自动发现本地 DNS。公司规则仍使用 `company` 私有配置；公开模式拒绝公司配置。
+
+构建 Clash 时可选 `--manual-candidates`：桌面配置显示目录中全部线路，但未验收者只进入默认 REJECT 的“测试”手动组，自动与普通手动组仍只含已验收线路；OpenWrt 节点源和主 V2Ray 订阅也只输出已验收线路。此选项需要至少一条已验收线路，不与 `--include-candidates` 混用。V2Ray 测试全集须另用 `--formats v2ray --include-candidates --name builder-test` 构建，不能用其替换稳定订阅。
 
 `--access-mode public` 无需 `--access-file`。`--name` 必须是项目标识符，不接受路径；固定路径只暴露所选格式和不含凭据的 `/version.json`。公开规则路径含内容版本，回滚不会把旧客户端指向新版规则。
 

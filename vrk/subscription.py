@@ -12,6 +12,7 @@ import tempfile
 import urllib.parse
 import urllib.request
 from . import catalog
+from . import __version__
 from .util import Error, atomic, digest, encode, read, run
 
 HEALTH = {
@@ -43,7 +44,10 @@ def locked_rule(spec, kind):
         or not re.fullmatch("[a-f0-9]{64}", spec["sha256"])
     ):
         raise Error("rules require HTTPS and locked SHA-256")
-    with urllib.request.urlopen(spec["url"], timeout=30) as response:
+    request = urllib.request.Request(
+        spec["url"], headers={"User-Agent": "vps-route-kit/" + __version__}
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
         if urllib.parse.urlsplit(response.url).scheme != "https":
             raise Error("rule redirect must remain HTTPS")
         data = response.read(16_000_001)
@@ -99,9 +103,11 @@ def access(path, rotate=False):
     return value["token"]
 
 
-def groups(names, provider=None):
+def groups(names, provider=None, automatic=None):
     # Mihomo uses the first member when none are healthy.
-    automatic = [name for name in names if not name.startswith("HK-")]
+    automatic = (
+        [name for name in names if not name.startswith("HK-")] if automatic is None else automatic
+    )
     fallback = {"name": "自动", "type": "fallback", **HEALTH, "proxies": ["REJECT"] + automatic}
     manual = {"name": "手动", "type": "select", "proxies": list(names) + ["REJECT"]}
     if provider:
@@ -124,7 +130,10 @@ def build(
     name="builder",
     formats="clash,v2ray",
     access_mode="token",
+    manual_candidates=False,
 ):
+    if manual_candidates and (candidates or "clash" not in formats):
+        raise Error("manual candidates require accepted Clash delivery, not candidate-only mode")
     catalog.validate(c)
     catalog.name(name)
     formats = formats.split(",") if isinstance(formats, str) else list(formats)
@@ -144,6 +153,22 @@ def build(
         url += "/" + access(access_file)
     routes = catalog.selected(c, base, candidates)
     nodes, names = catalog.proxies(c, routes)
+    automatic = [
+        r.get("display_name", r["exit_country"] + "-" + r["id"])
+        for r in routes
+        if r["exit_country"] != "HK"
+    ]
+    desktop_nodes = nodes
+    test_names = []
+    if manual_candidates:
+        all_routes = catalog.selected(c, base, True)
+        desktop_nodes, _ = catalog.proxies(c, all_routes)
+        accepted_ids = {r["id"] for r in routes}
+        test_names = [
+            r.get("display_name", r["exit_country"] + "-" + r["id"])
+            for r in all_routes
+            if r["id"] not in accepted_ids
+        ]
     from .export import mihomo_uri
 
     shareable = [n for n in nodes if n["name"] in names and not n.get("dialer-proxy")]
@@ -186,7 +211,7 @@ def build(
             "url": f"{rule_base}/{k}.txt",
             "path": f"./rules/vrk-{k}.txt",
             "interval": 86400,
-            "proxy": "外网",
+            "proxy": "DIRECT",
         }
         for k in rules
     }
@@ -206,8 +231,8 @@ def build(
         "bind-address": "127.0.0.1",
         "allow-lan": False,
         "tun": {"enable": False},
-        "proxies": nodes,
-        "proxy-groups": groups(names),
+        "proxies": desktop_nodes,
+        "proxy-groups": groups(names, automatic=automatic),
         "rule-providers": providers,
         "dns": {
             "enable": True,
@@ -233,6 +258,11 @@ def build(
             "MATCH,外网",
         ],
     }
+    if test_names:
+        desktop["proxy-groups"][0]["proxies"].append("测试")
+        desktop["proxy-groups"].append(
+            {"name": "测试", "type": "select", "proxies": ["REJECT"] + test_names}
+        )
     example = {
         "proxy-providers": {
             "vrk": {
@@ -249,8 +279,14 @@ def build(
                 "health-check": {"enable": True, **HEALTH},
             }
         },
-        "proxy-groups": groups([], "vrk"),
+        "proxy-groups": groups(names, "vrk", automatic=automatic),
     }
+    example["proxy-groups"][1]["proxies"] = ["REJECT"]
+    example["proxy-groups"][2]["proxies"] = ["REJECT"]
+    example["proxy-groups"][1]["filter"] = (
+        "^(?:" + "|".join(map(re.escape, automatic)) + ")$" if automatic else "^$"
+    )
+    example["proxy-groups"][2]["filter"] = "^(?:" + "|".join(map(re.escape, names)) + ")$"
     feed_nodes = copy.deepcopy(nodes)
     hops = []
     for n in feed_nodes:
@@ -275,6 +311,7 @@ def build(
         "selected_formats": formats,
         "rule_version": rule_version,
         "candidate_only": candidates,
+        "manual_candidate_names": test_names,
         "routes": [
             {"id": r["id"], "country": r["exit_country"], "fingerprint": catalog.fingerprint(c, r)}
             for r in routes

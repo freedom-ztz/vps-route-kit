@@ -274,4 +274,6 @@ vrk subscription build --catalog /private/catalog.json --output /private/release
 
 公开地址为 `/clash/builder.yaml`（桌面完整配置）、`/clash/providers/builder.yaml`（OpenWrt 节点源）、`/v2ray/builder.txt`（Base64 URI）。可单独选择 `--formats clash` 或 `--formats v2ray`；V2Ray 单独构建无需 Mihomo 或国内规则下载。链接更新不等于接管系统代理；OpenWrt 仅更新节点。
 
+可给线路设置中文短 `display_name`；`--manual-candidates` 允许桌面配置显示额外测试节点，但自动组、OpenWrt 节点源及主 V2Ray 订阅继续只使用合格线路。字段和限制见[配置说明](docs/configuration.md#线路目录与订阅)。
+
 正式构建要求线路具备同批次、同配置的完整连接诊断和 30 分钟稳定性证据。候选仅用于隔离测试。发布、指定版本回滚、证书检查和清理见[部署指南](docs/deployment.md)。

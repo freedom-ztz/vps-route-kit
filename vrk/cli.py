@@ -99,6 +99,7 @@ def parser():
     subscription.add_argument("--older-than-days", type=int, default=30)
     subscription.add_argument("--mihomo")
     subscription.add_argument("--include-candidates", action="store_true")
+    subscription.add_argument("--manual-candidates", action="store_true")
     subscription.add_argument("--publish-config")
     subscription.add_argument("--bundle")
     subscription.add_argument("--allow-candidates", action="store_true")
@@ -334,6 +335,7 @@ def main(argv=None):
                     name=a.name,
                     formats=a.formats,
                     access_mode=a.access_mode,
+                    manual_candidates=a.manual_candidates,
                 )
             else:
                 if not a.publish_config or (a.action == "publish" and not a.bundle):
