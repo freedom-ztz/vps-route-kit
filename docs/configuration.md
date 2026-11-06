@@ -100,7 +100,7 @@ vrk export --host root@exit-host --format mihomo --output .private/relay.json \
 
 每条线路可用 `acceptance.diagnosis`、`acceptance.stability` 引用相对目录的私有结果。诊断须匹配线路指纹及预期出口，并通过长连接、空闲恢复、双向传输与适用的 UDP 练习；稳定性须完成至少 1800 秒、两个目标各 60 次且无失败。verify 中的代理名称须与线路 id 相同。仅线路及实际依赖变化使旧指纹失效；无关节点变化不要求重测。旧版未绑定证据不能用于正式发布。单条失败不会使同批其他合格线路失效。
 
-`rules` 可覆盖随包固定的 domains / cidrs 锁，每项为 HTTPS url、sha256；空内容、哈希不符或下载失败拒绝构建，不更新旧发布。默认规则来源是固定提交的 MetaCubeX/meta-rules-dat CN 域名和 IPv4 网段，更新须审查锁文件后重新构建。客户端从订阅站点直连下载规则，不依赖尚未就绪的外网代理组；首次接入须能访问订阅及其规则地址。
+`rules` 可覆盖随包固定的 domains / cidrs 锁，每项为 HTTPS url、sha256；空内容、哈希不符或下载失败拒绝构建，不更新旧发布。默认规则来源是固定提交的 MetaCubeX/meta-rules-dat CN 域名和 IPv4 网段，更新须审查锁文件后重新构建。客户端从订阅站点直连下载规则，其域名使用独立国内 DNS 引导，不依赖尚未就绪的外网代理组；站点若属于显式公司/本地域名，则保留对应私有 DNS，不增加公共覆盖。首次接入须能访问订阅及其规则地址。
 
 可选 `dns.bootstrap/domestic/remote` 分别设置节点引导、国内与外网解析。可选 `company.domains/cidrs/dns` 设置私有公司规则；公司域名只使用显式公司 DNS、返回真实地址，不配置公共回退。公司规则优先于国内分类；公共模板不含真实公司域名。
 

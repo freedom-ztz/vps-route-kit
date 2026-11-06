@@ -196,6 +196,13 @@ def build(
         "rule-set:domestic-domains": dns["domestic"],
         urllib.parse.urlsplit(HEALTH["url"]).hostname: dns["domestic"],
     }
+    resource_host = urllib.parse.urlsplit(base_url).hostname
+    private_domains = company.get("domains", []) + local.get("domains", [])
+    if not any(
+        resource_host == d.lower() or resource_host.endswith("." + d.lower())
+        for d in private_domains
+    ):
+        policy[resource_host] = dns["domestic"]
     for d in local.get("domains", []):
         catalog.address(d)
         policy["+." + d] = local["dns"]

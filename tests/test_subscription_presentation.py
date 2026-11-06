@@ -92,6 +92,10 @@ class PresentationTests(unittest.TestCase):
             m = validate_bundle(out)
             desktop = read(out / "desktop.json")
             self.assertTrue(all(p["proxy"] == "DIRECT" for p in desktop["rule-providers"].values()))
+            self.assertEqual(
+                desktop["dns"]["nameserver-policy"]["sub.example.com"],
+                desktop["dns"]["proxy-server-nameserver"],
+            )
             provider = read(out / "nodes.json")
             self.assertEqual(len(desktop["proxies"]), 3)
             self.assertEqual(len(provider["proxies"]), 2)
@@ -121,6 +125,32 @@ class PresentationTests(unittest.TestCase):
                     formats=formats,
                     manual_candidates=True,
                 )
+
+    def test_resource_bootstrap_preserves_private_dns_without_public_override(self):
+        for field in ("company", "local"):
+            c = inventory()
+            c[field] = {"domains": ["example.com"], "dns": ["192.0.2.53"]}
+            with (
+                self.subTest(field=field),
+                tempfile.TemporaryDirectory() as folder,
+                patch(
+                    "vrk.subscription.locked_rule", side_effect=["+.example.cn\n", "192.0.2.0/24\n"]
+                ),
+                patch("vrk.subscription.run", return_value=SimpleNamespace(returncode=0)),
+            ):
+                out = Path(folder) / "release"
+                build(
+                    c,
+                    folder,
+                    out,
+                    "https://sub.example.com",
+                    Path(folder) / "access.json",
+                    "/mihomo",
+                    True,
+                )
+                policy = read(out / "desktop.json")["dns"]["nameserver-policy"]
+                self.assertEqual(policy["+.example.com"], ["192.0.2.53"])
+                self.assertNotIn("sub.example.com", policy)
 
     def test_rule_download_identifies_application_and_keeps_hash_validation(self):
         class Response:
