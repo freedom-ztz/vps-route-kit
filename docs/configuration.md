@@ -4,6 +4,8 @@
 
 `schema_version` 固定为 1；`address` 是客户端使用的服务器地址。监听项包含唯一 `id`、`protocol`（vision/xhttp/hysteria2）、`listen`、`port` 和 `secret` 引用。
 
+## 服务 DNS
+
 服务器可选 `service_dns`，按核心显式指定 DNS：
 
 ```json
@@ -13,6 +15,10 @@
 支持 `xray`、`hysteria`、`realm`，每项为 1–3 个不重复的 IPv4 地址，端口固定为 53。示例要求本机已经有可用的 DNS 服务；工具不安装解析器、不添加公共回退。未指定的核心继续使用宿主机 DNS。该配置使用 systemd 原生 `BindReadOnlyPaths` 给对应服务挂载项目生成的 `resolv.conf`，不修改宿主机 `/etc/resolv.conf` 或其他服务。系统必须支持挂载命名空间；不支持时部署失败并回滚，不添加兼容脚本。修改解析器只重启使用它的项目核心；同一核心中的入口一起受影响。
 
 这与桌面订阅的 DNS 策略、OpenWrt 的 DNS 服务分别管理。REALITY 伪装目标使用系统拨号器解析，不能以为仅配置 Xray 内置 DNS 就覆盖了这条依赖。
+
+本地 Unbound、容器 DNS、宿主机 DNS 的适用范围及检查命令见[部署指南](deployment.md#vps-dns-部署与隔离)。默认不启用该字段；先验证解析器真实可用，再在受影响服务内确认生效。
+
+## 入口与证书
 
 REALITY 必须显式配置 `server_name`、`target`（主机名）及可选 `target_port`（默认 443）。目标应支持 TLS 1.3；XHTTP 需要实际验证 HTTP/2。两种 REALITY 入口使用不同 TCP 端口；不增加端口复用前置服务。XHTTP 默认 `/vrk`、stream-one，不设置 Vision flow。
 
